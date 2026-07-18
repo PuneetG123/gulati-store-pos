@@ -2781,6 +2781,25 @@ function setupStoreSettings() {
       sendReceiptToPrinter(textReceipt);
     });
   }
+
+  // Bind Bluetooth Print Button for Mobile Direct Printing
+  const btPrintBtn = document.getElementById("receipt-bt-print-btn");
+  if (btPrintBtn) {
+    btPrintBtn.addEventListener("click", () => {
+      if (!state.lastTransaction) return;
+      const textReceipt = generateTextReceipt(state.lastTransaction);
+      sendBluetoothPrint(textReceipt);
+    });
+  }
+}
+
+function sendBluetoothPrint(textReceipt) {
+  // Construct RawBT Android Web Intent for Direct Bluetooth Printing
+  const encodedText = encodeURIComponent(textReceipt);
+  const rawbtIntent = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a42.rawbtprinter;end;`;
+  
+  // Trigger intent on Android device
+  window.location.href = rawbtIntent;
 }
 
 async function sendReceiptToPrinter(receiptText) {
