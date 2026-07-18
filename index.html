@@ -631,14 +631,17 @@
         <!-- Structured invoice layout will go here -->
       </div>
       
-      <div class="modal-footer" style="margin-top:20px; padding-top:12px; border-top:none;">
-        <button class="btn btn-secondary" id="receipt-close-btn" style="flex-grow:1;">Close Drawer</button>
-        <button class="btn btn-warning" id="receipt-direct-print-btn" style="flex-grow:1; display:flex; align-items:center; justify-content:center; gap:6px;">
+      <div class="modal-footer" style="margin-top:20px; padding-top:12px; border-top:none; flex-wrap:wrap; gap:8px;">
+        <button class="btn btn-secondary" id="receipt-close-btn" style="flex: 1 1 45%;">Close</button>
+        <button class="btn btn-warning" id="receipt-direct-print-btn" style="flex: 1 1 45%; display:flex; align-items:center; justify-content:center; gap:6px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          Direct Print
+          Laptop Print
         </button>
-        <button class="btn btn-primary" id="receipt-print-btn" style="flex-grow:1;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <button class="btn btn-primary" id="receipt-bt-print-btn" style="flex: 1 1 45%; display:flex; align-items:center; justify-content:center; gap:6px; background-color:#2563EB; color:#fff; border:none;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
+          Bluetooth Print
+        </button>
+        <button class="btn btn-secondary" id="receipt-print-btn" style="flex: 1 1 45%;">
           Print Invoice (PDF)
         </button>
       </div>
