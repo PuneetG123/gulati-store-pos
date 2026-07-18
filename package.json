@@ -1,0 +1,14 @@
+{
+  "name": "gulati-store-pos",
+  "version": "1.2.0",
+  "description": "GST POS Billing and Ledger system with SQLite sync",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.7.3",
+    "sqlite3": "^5.1.7"
+  }
+}
