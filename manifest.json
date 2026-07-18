@@ -1,0 +1,17 @@
+{
+  "short_name": "Gulati Store",
+  "name": "Gulati Store POS & Ledger",
+  "icons": [
+    {
+      "src": "pos_app_icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "background_color": "#0b0f19",
+  "theme_color": "#10b981",
+  "display": "standalone",
+  "orientation": "portrait"
+}
