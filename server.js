@@ -244,7 +244,7 @@ app.post('/api/login', async (req, res) => {
     const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
     const currentPin = row ? row.value : "1234";
 
-    if (pin === currentPin) {
+    if (String(pin).trim() === String(currentPin).trim()) {
       const token = crypto.randomBytes(16).toString('hex');
       activeTokens.add(token);
       res.json({ success: true, token });
