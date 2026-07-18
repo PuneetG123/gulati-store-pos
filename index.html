@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
+  <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Mobile Web App Meta Tags (iOS Support) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gulati Store">
+  <link rel="apple-touch-icon" href="pos_app_icon.png">
+</head>
+<body>
+
+  <div id="app-container">
+    
+    <!-- SIDEBAR NAVIGATION -->
+    <aside id="sidebar">
+      <div class="brand-section">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="brand-logo">GS</div>
+          <div class="brand-info">
+            <h1>Gulati Store</h1>
+            <span>GST POS System</span>
+          </div>
+        </div>
+        <button id="mobile-menu-toggle" class="mobile-only-btn" style="display: none;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+        </button>
+      </div>
+      
+      <nav id="sidebar-nav">
+        <ul>
+          <li class="nav-item active" data-page="dashboard">
+            <button id="nav-btn-dashboard">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+              Dashboard
+            </button>
+          </li>
+          <li class="nav-item" data-page="pos">
+            <button id="nav-btn-pos">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+              POS Billing
+            </button>
+          </li>
+          <li class="nav-item" data-page="inventory">
+            <button id="nav-btn-inventory">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21.5 12H16c-.5 0-.9-.4-.9-.9V4.5M2.5 12h5.5c.5 0 .9-.4.9-.9V4.5M12 21.5V16c0-.5-.4-.9-.9-.9H4.5"/></svg>
+              Inventory
+            </button>
+          </li>
+          <li class="nav-item" data-page="transactions">
+            <button id="nav-btn-transactions">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Transactions
+            </button>
+          </li>
+          <li class="nav-item" data-page="ledger">
+            <button id="nav-btn-ledger">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Khata Ledger
+            </button>
+          </li>
+        </ul>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <p>v1.2.0 &bull; GST Active</p>
+        <button class="btn btn-secondary btn-sm" id="sidebar-change-pin-btn" onclick="openChangePinModal()" style="margin-top: 8px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Store Settings
+        </button>
+      </div>
+    </aside>
+    
+    <!-- MAIN CONTENT VIEW SHELL -->
+    <main id="main-content">
+      
+      <!-- 1. DASHBOARD VIEW -->
+      <section id="dashboard-view" class="page-view active">
+        <div class="page-header">
+          <div>
+            <h2>Dashboard</h2>
+            <p>Welcome back, Admin. Here is today's store performance.</p>
+          </div>
+          <div class="btn badge badge-success">Live Sync OK</div>
+        </div>
+        
+        <!-- Stats Cards Grid -->
+        <div class="grid-container stats-grid">
+          <div class="card stat-card sales">
+            <div>
+              <span class="stat-label">Today's Sales</span>
+              <div class="stat-value" id="stat-sales">₹0.00</div>
+            </div>
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18"/></svg>
+            </div>
+          </div>
+          <div class="card stat-card products">
+            <div>
+              <span class="stat-label">Total Products</span>
+              <div class="stat-value" id="stat-products">0</div>
+            </div>
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01"/></svg>
+            </div>
+          </div>
+          <div class="card stat-card lowstock">
+            <div>
+              <span class="stat-label">Low Stock Items</span>
+              <div class="stat-value" id="stat-lowstock">0</div>
+            </div>
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+            </div>
+          </div>
+          <div class="card stat-card gst">
+            <div>
+              <span class="stat-label">GST Collected (Today)</span>
+              <div class="stat-value" id="stat-gst">₹0.00</div>
+            </div>
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6"/></svg>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Detailed Analytics & Recent Ledger -->
+        <div class="grid-container dashboard-details-grid">
+          <div class="card chart-card">
+            <div class="chart-header">
+              <h3 class="stat-label" style="font-size:15px; color:var(--text-primary);">Sales Trend (Past 7 Days)</h3>
+              <span style="font-size:12px; color:var(--text-muted);">Daily aggregates inclusive of GST</span>
+            </div>
+            <div class="chart-container" id="dashboard-chart-container">
+              <!-- SVG Chart drawn dynamically by app.js -->
+            </div>
+          </div>
+          <div class="card recent-activity-card">
+            <h3 class="stat-label" style="font-size:15px; color:var(--text-primary);">Recent Billing</h3>
+            <div class="activity-list" id="dashboard-recent-list">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- 2. POS BILLING VIEW -->
+      <section id="pos-view" class="page-view">
+        <div class="pos-layout">
+          
+          <!-- POS Left Panel: Catalog list & Quick Tab Filter -->
+          <div class="pos-catalog-panel">
+            <div class="pos-actions-header">
+              <div class="search-wrapper">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="pos-search-input" class="form-control" placeholder="Search product by SKU or Name...">
+              </div>
+              
+              <!-- Scanner Simulator -->
+              <div class="scanner-card active" id="scanner-sim-card">
+                <div class="scanner-info">
+                  <div class="scanner-indicator"></div>
+                  <div>
+                    <h4>Scanner Input</h4>
+                    <span>Press Enter to Scan</span>
+                  </div>
+                </div>
+                <div class="scanner-input-box">
+                  <input type="text" id="pos-scanner-sim-input" placeholder="Scan SKU / Barcode">
+                </div>
+              </div>
+            </div>
+            
+            <div class="pos-categories-tabs" id="pos-category-tabs">
+              <!-- Tabs added dynamically -->
+            </div>
+            
+            <div class="catalog-scroll">
+              <div class="catalog-grid" id="pos-catalog-grid">
+                <!-- Products catalog rendered here -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- POS Right Panel: Shopping Cart & Totals -->
+          <div class="card pos-cart-panel">
+            <div class="cart-header">
+              <div class="cart-title">
+                Cart <span id="pos-cart-count">0 Items</span>
+              </div>
+              <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" id="pos-clear-cart-btn">Clear Cart</button>
+            </div>
+            
+            <!-- Customer Detail Onboarding -->
+            <div class="cart-onboarding" style="margin-top:14px;">
+              <input type="text" id="pos-customer-name" placeholder="Customer Name" class="form-control" list="pos-customer-names-list">
+              <datalist id="pos-customer-names-list"></datalist>
+              <input type="tel" id="pos-customer-phone" placeholder="Phone Number" class="form-control" maxlength="10" list="pos-customer-phones-list">
+              <datalist id="pos-customer-phones-list"></datalist>
+            </div>
+            
+            <!-- Quick Custom Item billing row -->
+            <div class="custom-item-bar">
+              <h5>Quick Custom Item</h5>
+              <div class="custom-item-inputs">
+                <input type="text" id="pos-custom-name" name="name" placeholder="Item Name (e.g. Loose Coriander)">
+                <input type="number" id="pos-custom-price" name="price" placeholder="Price (₹)" min="1" step="0.5">
+                <select id="pos-custom-gst" name="gst">
+                  <option value="0">0% GST</option>
+                  <option value="5">5% GST</option>
+                  <option value="12">12% GST</option>
+                  <option value="18">18% GST</option>
+                  <option value="28">28% GST</option>
+                </select>
+                <select id="pos-custom-unit" name="unit">
+                  <option value="pcs">per Pc</option>
+                  <option value="kg">per Kg</option>
+                </select>
+                <div style="display:flex; align-items:center; gap:4px; font-size:11px; white-space:nowrap; color:var(--text-secondary); margin-left: 4px;">
+                  <input type="checkbox" id="pos-custom-save-catalog" style="width:14px; height:14px; cursor:pointer;">
+                  <label for="pos-custom-save-catalog" style="cursor:pointer; font-size: 11px;">Save to Catalog</label>
+                </div>
+                <button class="btn btn-primary" style="padding:6px 12px; font-size:12px; margin-left: auto;" id="pos-custom-add-btn">Add</button>
+              </div>
+            </div>
+            
+            <!-- Active items list -->
+            <div class="cart-items-wrapper" id="pos-cart-items">
+              <!-- Empty Cart State -->
+              <div class="empty-cart-state" id="pos-empty-state">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                <p>No items in cart.<br>Scan a barcode or click items to begin billing.</p>
+              </div>
+            </div>
+            
+            <!-- Checkout totals calc drawer -->
+            <div class="pos-cart-summary">
+              <div class="summary-row">
+                <span>Subtotal (Excl. Tax)</span>
+                <span id="summary-subtotal">₹0.00</span>
+              </div>
+              <div class="summary-row">
+                <span>CGST</span>
+                <span id="summary-cgst">₹0.00</span>
+              </div>
+              <div class="summary-row">
+                <span>SGST</span>
+                <span id="summary-sgst">₹0.00</span>
+              </div>
+              <div class="summary-row">
+                <div class="discount-select-group">
+                  <select id="pos-discount-type">
+                    <option value="flat">Discount (₹)</option>
+                    <option value="percentage">Discount (%)</option>
+                  </select>
+                  <input type="number" id="pos-discount-value" value="0" min="0" class="form-control" style="width: 70px; height: 24px; padding: 2px 6px;">
+                </div>
+                <span id="summary-discount">-₹0.00</span>
+              </div>
+              
+              <div class="summary-row total">
+                <span>Total Payable</span>
+                <span id="summary-total">₹0.00</span>
+              </div>
+              
+              <div class="pos-cart-controls">
+                <div class="form-group" style="margin-bottom:0;">
+                  <select id="pos-payment-method" class="form-control" style="height:40px;">
+                    <option value="UPI">Pay via UPI</option>
+                    <option value="Cash">Pay via Cash</option>
+                    <option value="Card">Pay via Card</option>
+                    <option value="Wallet">Mobile Wallet</option>
+                    <option value="Credit">Credit / Khata Account</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary" id="pos-checkout-btn" style="height:40px;">Pay & Print Bill</button>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </section>
+      
+      <!-- 3. INVENTORY VIEW -->
+      <section id="inventory-view" class="page-view">
+        <div class="page-header">
+          <div>
+            <h2>Product Catalog</h2>
+            <p>Manage and audit products, pricing, stock and tax settings.</p>
+          </div>
+          <div style="display:flex; gap:12px;">
+            <button class="btn btn-secondary" id="inv-export-csv-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              Export CSV
+            </button>
+            <button class="btn btn-secondary" id="inv-import-modal-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Import CSV (Bulk)
+            </button>
+            <button class="btn btn-primary" id="inv-add-product-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Product
+            </button>
+          </div>
+        </div>
+        
+        <!-- Filters panel -->
+        <div class="inventory-actions">
+          <div class="search-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="inv-search-input" class="form-control" placeholder="Search by SKU, Name or HSN...">
+          </div>
+          
+          <div class="filter-group">
+            <select id="inv-filter-category" class="form-control" style="width: 160px;">
+              <option value="all">All Categories</option>
+              <!-- Categories dynamically added -->
+            </select>
+            
+            <select id="inv-filter-stock" class="form-control" style="width: 160px;">
+              <option value="all">All Stock Levels</option>
+              <option value="low">Low Stock</option>
+              <option value="out">Out of Stock</option>
+            </select>
+            
+            <button class="btn btn-secondary" id="inv-reset-db-btn" style="color:var(--danger); border-color:hsla(0, 84%, 60%, 0.2);">Reset DB</button>
+          </div>
+        </div>
+        
+        <!-- Inventory Table Card -->
+        <div class="card inventory-table-card">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU / Barcode</th>
+                  <th>Product Name</th>
+                  <th>Category</th>
+                  <th>HSN</th>
+                  <th>Cost Price</th>
+                  <th>Selling Price</th>
+                  <th>GST Slab</th>
+                  <th>Discount</th>
+                  <th>Stock Qty</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventory-table-body">
+                <!-- Products list added dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      
+      <!-- 4. TRANSACTIONS LEDGER VIEW -->
+      <section id="transactions-view" class="page-view">
+        <div class="page-header">
+          <div>
+            <h2>Transaction History</h2>
+            <p>View and manage receipts, analyze client transactions and tax summaries.</p>
+          </div>
+        </div>
+        
+        <div class="txn-search-group">
+          <div class="search-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="txn-search-input" class="form-control" placeholder="Search by Invoice ID, Client Name or Phone...">
+          </div>
+        </div>
+        
+        <!-- Transaction Table Card -->
+        <div class="card inventory-table-card">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date & Time</th>
+                  <th>Invoice ID</th>
+                  <th>Customer Info</th>
+                  <th>Items</th>
+                  <th>Subtotal</th>
+                  <th>Discount</th>
+                  <th>GST (CGST+SGST)</th>
+                  <th>Total Paid</th>
+                  <th>Payment Method</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="txn-table-body">
+                <!-- Transactions list added dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. CUSTOMER LEDGER (KHATA BOOK) VIEW -->
+      <section id="ledger-view" class="page-view">
+        <div class="page-header">
+          <div>
+            <h2>Customer Ledger (Khata Book)</h2>
+            <p>Track store credits, customer outstanding dues, and payment statements.</p>
+          </div>
+          <div>
+            <button class="btn btn-primary" id="ledger-add-customer-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+              Add Customer
+            </button>
+          </div>
+        </div>
+        
+        <!-- Ledger Stats Grid -->
+        <div class="grid-container stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 24px;">
+          <div class="card stat-card sales" style="border-color: var(--border-color);">
+            <div>
+              <span class="stat-label">Total Outstanding Dues</span>
+              <div class="stat-value" id="stat-total-dues" style="color: var(--danger);">₹0.00</div>
+            </div>
+            <div class="stat-icon" style="background-color: hsla(0, 84%, 60%, 0.15); color: var(--danger);">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+          </div>
+          <div class="card stat-card products">
+            <div>
+              <span class="stat-label">Credit Accounts Active</span>
+              <div class="stat-value" id="stat-active-debtors">0</div>
+            </div>
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+          </div>
+        </div>
+        
+        <div class="txn-search-group">
+          <div class="search-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="ledger-search-input" class="form-control" placeholder="Search customer by name or phone...">
+          </div>
+        </div>
+        
+        <!-- Customers Ledger Table Card -->
+        <div class="card inventory-table-card">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Customer Name</th>
+                  <th>Contact Number</th>
+                  <th>Total Purchased</th>
+                  <th>Outstanding Dues</th>
+                  <th>Last Transaction</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ledger-table-body">
+                <!-- Customer list added dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      
+    </main>
+  </div>
+  
+  <!-- ====================================================
+       MODALS SECTION
+  ==================================================== -->
+  
+  <!-- Add/Edit Product Modal -->
+  <div class="modal-overlay" id="product-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="product-modal-title">Add New Product</h3>
+        <button class="modal-close" id="product-modal-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="product-form">
+        <input type="hidden" id="prod-edit-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="prod-sku">SKU / Barcode (Mandatory)</label>
+            <input type="text" id="prod-sku" class="form-control" required placeholder="e.g. 8901030753007">
+          </div>
+          <div class="form-group">
+            <label for="prod-hsn">HSN Code</label>
+            <input type="text" id="prod-hsn" class="form-control" placeholder="e.g. 0405">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="prod-name">Product Name (Mandatory)</label>
+          <input type="text" id="prod-name" class="form-control" required placeholder="e.g. Amul Butter 500g">
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="prod-category">Category</label>
+            <select id="prod-category" class="form-control">
+              <option value="Produce">Produce (Fruits & Veg)</option>
+              <option value="Dairy">Dairy Products</option>
+              <option value="Bakery">Bakery & Bread</option>
+              <option value="Pantry">Pantry & Staples</option>
+              <option value="Snacks">Snacks & Confectionery</option>
+              <option value="Beverages">Beverages</option>
+              <option value="Household">Household & Hygiene</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="prod-unit">Selling Unit</label>
+            <select id="prod-unit" class="form-control">
+              <option value="pcs">Pieces (pcs)</option>
+              <option value="kg">Kilogram (kg)</option>
+              <option value="g">Gram (g)</option>
+              <option value="L">Litre (L)</option>
+              <option value="ml">Millilitre (ml)</option>
+              <option value="pack">Pack</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="prod-cost">Cost Price (₹, Excl. GST)</label>
+            <input type="number" id="prod-cost" class="form-control" step="0.01" required min="0" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label for="prod-price">Selling Price (₹, Incl. GST)</label>
+            <input type="number" id="prod-price" class="form-control" step="0.01" required min="0" placeholder="0.00">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="prod-gst">GST Slab (India)</label>
+            <select id="prod-gst" class="form-control">
+              <option value="0">0% (Exempted / Fresh)</option>
+              <option value="5">5% (Staples / Packaged)</option>
+              <option value="12">12% (Butter / Cheese / Juices)</option>
+              <option value="18">18% (Biscuits / Sauces / Detergents)</option>
+              <option value="28">28% (Aerated Drinks / Chocolates)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="prod-stock">Initial Stock Quantity</label>
+            <input type="number" id="prod-stock" class="form-control" required min="0" value="0">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="prod-reorder">Low Stock Reorder Limit</label>
+            <input type="number" id="prod-reorder" class="form-control" required min="0" value="5">
+          </div>
+          <div class="form-group">
+            <label for="prod-discount">Default Discount (%)</label>
+            <input type="number" id="prod-discount" class="form-control" required min="0" max="100" value="0" step="1" placeholder="0">
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="prod-modal-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="prod-modal-submit-btn">Save Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <!-- CSV Bulk Import Modal -->
+  <div class="modal-overlay" id="csv-import-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Bulk Import Products</h3>
+        <button class="modal-close" id="csv-modal-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      
+      <div style="font-size:13px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">
+        <p style="margin-bottom:10px;">Upload a CSV file containing your product directory catalog. You can download our structure template below, complete it, and upload it.</p>
+        <button class="btn btn-secondary" style="font-size:12px; padding:6px 12px;" id="csv-download-template-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download CSV Template
+        </button>
+      </div>
+      
+      <div class="form-group">
+        <label for="csv-file-input" style="border: 2px dashed var(--border-color); border-radius: var(--radius-md); padding: 30px; text-align: center; cursor: pointer; display: block; transition: var(--transition);" id="csv-drop-zone">
+          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="margin-bottom:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          <span style="display:block; font-weight:600; color:var(--text-primary);">Choose File or Drag & Drop</span>
+          <span style="display:block; font-size:11px; color:var(--text-muted); margin-top:4px;">Supports only .csv extensions</span>
+          <input type="file" id="csv-file-input" accept=".csv" style="display:none;">
+        </label>
+      </div>
+      
+      <div id="csv-file-info" style="display:none; font-size:13px; padding:10px; border-radius:var(--radius-sm); background-color:var(--primary-light); color:var(--primary); font-weight:500; margin-top:14px;">
+        <!-- File Name and Details -->
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="csv-modal-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="csv-modal-submit-btn" disabled>Import Catalog</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Receipt Drawer Modal -->
+  <div class="modal-overlay" id="receipt-modal">
+    <div class="modal-content" style="max-width:450px;">
+      
+      <!-- Checkout Success Area -->
+      <div id="checkout-success-view">
+        <div class="checkmark-circle">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h3 style="font-size: 20px; font-weight:700; color:var(--success);">Transaction Successful</h3>
+        <p style="font-size:13px; color:var(--text-secondary); margin-top:4px;" id="receipt-invoice-id">Invoice No: TXN-000000</p>
+      </div>
+      
+      <!-- Print Target -->
+      <div class="receipt-wrapper" id="receipt-print-area">
+        <!-- Structured invoice layout will go here -->
+      </div>
+      
+      <div class="modal-footer" style="margin-top:20px; padding-top:12px; border-top:none;">
+        <button class="btn btn-secondary" id="receipt-close-btn" style="flex-grow:1;">Close Drawer</button>
+        <button class="btn btn-warning" id="receipt-direct-print-btn" style="flex-grow:1; display:flex; align-items:center; justify-content:center; gap:6px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Direct Print
+        </button>
+        <button class="btn btn-primary" id="receipt-print-btn" style="flex-grow:1;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Print Invoice (PDF)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Record Payment Modal -->
+  <div class="modal-overlay" id="payment-modal">
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3>Record Khata Payment</h3>
+        <button class="modal-close" id="payment-modal-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="ledger-payment-form">
+        <input type="hidden" id="payment-cust-phone">
+        <div class="form-group">
+          <label>Customer Name</label>
+          <input type="text" id="payment-cust-name" class="form-control" disabled>
+        </div>
+        <div class="form-group">
+          <label>Current Outstanding Balance</label>
+          <input type="text" id="payment-current-balance" class="form-control" disabled style="color:var(--danger); font-weight:700;">
+        </div>
+        <div class="form-group">
+          <label for="payment-amount">Amount Received (₹)</label>
+          <input type="number" id="payment-amount" class="form-control" required min="0.01" step="any" placeholder="Enter amount received">
+        </div>
+        <div class="form-group">
+          <label for="payment-method">Payment Mode</label>
+          <select id="payment-method" class="form-control">
+            <option value="Cash">Cash</option>
+            <option value="UPI">UPI</option>
+            <option value="Card">Card</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="payment-modal-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Record Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Ledger Statement Modal -->
+  <div class="modal-overlay" id="ledger-statement-modal">
+    <div class="modal-content" style="max-width:650px;">
+      <div class="modal-header">
+        <div>
+          <h3 id="statement-title">Ledger Statement</h3>
+          <p id="statement-subtitle" style="font-size:12px; color:var(--text-secondary); margin-top:2px;">Statement account log</p>
+        </div>
+        <button class="modal-close" id="statement-modal-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      
+      <!-- Period Selector Filter -->
+      <div class="statement-filter-bar" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:16px; padding:12px; background:var(--bg-main); border:1px solid var(--border-color); border-radius:var(--radius-sm);">
+        <div class="form-group" style="margin-bottom:0; flex-grow:1; min-width:140px;">
+          <label for="statement-period" style="font-size:11px; color:var(--text-secondary); margin-bottom:4px; display:block;">Select Period</label>
+          <select id="statement-period" class="form-control" style="height:32px; padding:2px 8px; font-size:12px;">
+            <option value="all">All Time</option>
+            <option value="30days">Last 30 Days</option>
+            <option value="current-month">Current Month</option>
+            <option value="year">Last 12 Months</option>
+            <option value="custom">Custom Date Range</option>
+          </select>
+        </div>
+        <div id="statement-custom-dates" style="display:none; gap:8px; align-items:center; flex-grow:2;">
+          <div class="form-group" style="margin-bottom:0; flex-grow:1;">
+            <label for="statement-start-date" style="font-size:11px; color:var(--text-secondary); margin-bottom:4px; display:block;">Start Date</label>
+            <input type="date" id="statement-start-date" class="form-control" style="height:32px; padding:2px 8px; font-size:12px;">
+          </div>
+          <div class="form-group" style="margin-bottom:0; flex-grow:1;">
+            <label for="statement-end-date" style="font-size:11px; color:var(--text-secondary); margin-bottom:4px; display:block;">End Date</label>
+            <input type="date" id="statement-end-date" class="form-control" style="height:32px; padding:2px 8px; font-size:12px;">
+          </div>
+        </div>
+      </div>
+      
+      <!-- Statement Table Sheet -->
+      <div class="card inventory-table-card" style="margin-bottom:16px;">
+        <div class="table-responsive" style="max-height: 350px;">
+          <table style="font-size:12px;">
+            <thead>
+              <tr style="font-size:11px;">
+                <th>Date & Time</th>
+                <th>Description / Ref</th>
+                <th>Debit (Purchases)</th>
+                <th>Credit (Payments)</th>
+                <th>Balance Dues</th>
+              </tr>
+            </thead>
+            <tbody id="statement-table-body">
+              <!-- Chronological ledger entries -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="modal-footer" style="margin-top:20px; padding-top:12px;">
+        <button class="btn btn-secondary" id="statement-modal-close-btn-bottom" style="flex-grow:1;">Close Statement</button>
+        <button class="btn btn-primary" id="statement-print-btn" style="flex-grow:1;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Print Statement
+        </button>
+        <button class="btn btn-primary" id="statement-download-btn" style="flex-grow:1; display:flex; align-items:center; justify-content:center; gap:6px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Customer Modal -->
+  <div class="modal-overlay" id="add-customer-modal">
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3>Add Customer Account</h3>
+        <button class="modal-close" id="add-cust-modal-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="add-customer-form">
+        <div class="form-group">
+          <label for="cust-new-name">Customer Name (Mandatory)</label>
+          <input type="text" id="cust-new-name" class="form-control" required placeholder="e.g. Raman Kumar">
+        </div>
+        <div class="form-group">
+          <label for="cust-new-phone">Mobile Number (10 digits, Mandatory)</label>
+          <input type="tel" id="cust-new-phone" class="form-control" required maxlength="10" placeholder="e.g. 9999888877">
+        </div>
+        <div class="form-group">
+          <label for="cust-new-dues">Previous Outstanding Dues (₹)</label>
+          <input type="number" id="cust-new-dues" class="form-control" step="any" value="0" placeholder="0.00">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="add-cust-modal-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Adjust Dues Modal -->
+  <div class="modal-overlay" id="adjust-dues-modal">
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3>Adjust Outstanding Dues</h3>
+        <button class="modal-close" id="adjust-dues-modal-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="adjust-dues-form">
+        <input type="hidden" id="adjust-cust-phone">
+        <div class="form-group">
+          <label>Customer Name</label>
+          <input type="text" id="adjust-cust-name" class="form-control" disabled>
+        </div>
+        <div class="form-group">
+          <label>Current Dues Balance</label>
+          <input type="text" id="adjust-current-dues" class="form-control" disabled style="color:var(--danger); font-weight:700;">
+        </div>
+        <div class="form-group">
+          <label for="adjust-new-dues">Add Existing Outstanding Dues (₹)</label>
+          <input type="number" id="adjust-new-dues" class="form-control" required step="any" placeholder="e.g. 500 to add, -200 to subtract">
+        </div>
+        <div class="form-group">
+          <label for="adjust-reason">Reason for Adjustment</label>
+          <input type="text" id="adjust-reason" class="form-control" placeholder="e.g. Corrected typo, Special discount">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="adjust-dues-modal-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Adjustment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Change PIN & Store Settings Modal -->
+  <div class="modal-overlay" id="change-pin-modal">
+    <div class="modal-content" style="max-width:390px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3>Store Settings</h3>
+        <button class="modal-close" id="change-pin-close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      
+      <!-- STORE & PRINTER CONFIGURATION SECTION -->
+      <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 16px;">
+        <h4 style="font-size: 14px; font-weight: 700; color: var(--primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          Store & Printer Settings
+        </h4>
+        <div class="form-group">
+          <label for="settings-printer-name">Windows Printer Name</label>
+          <input type="text" id="settings-printer-name" class="form-control" placeholder="e.g. XP-80, Epson (Leave empty for default)">
+          <small style="color:var(--text-muted); font-size:11px; margin-top:2px; display:block;">Must match the spelling in your Windows Printers list exactly.</small>
+        </div>
+        <div class="form-group" style="margin-top: 8px;">
+          <label for="settings-gstin">Store GSTIN Number</label>
+          <input type="text" id="settings-gstin" class="form-control" placeholder="e.g. 07AAAAA1111A1Z1" maxlength="15" style="text-transform: uppercase;">
+        </div>
+        <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 8px;">
+          <input type="checkbox" id="settings-auto-print" style="width:16px; height:16px; cursor:pointer;">
+          <label for="settings-auto-print" style="cursor:pointer; font-size:13px;">Auto-Print Receipt on Checkout</label>
+        </div>
+        <button type="button" class="btn btn-primary" id="settings-save-printer-btn" style="width:100%; margin-top: 12px; font-size:13px; height:36px;">Save Settings</button>
+        <div id="printer-settings-status" style="margin-top: 8px; font-size: 12px; text-align: center; display: none;"></div>
+      </div>
+      
+      <!-- CHANGE PIN SECTION -->
+      <form id="change-pin-form">
+        <h4 style="font-size: 14px; font-weight: 700; color: var(--primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Change Security PIN
+        </h4>
+        <div class="form-group">
+          <label for="pin-current">Current 4-Digit PIN</label>
+          <input type="password" id="pin-current" class="form-control" required maxlength="4" pattern="\d{4}" placeholder="••••" style="text-align:center; font-size: 18px; letter-spacing: 6px;">
+        </div>
+        <div class="form-group">
+          <label for="pin-new">New 4-Digit PIN</label>
+          <input type="password" id="pin-new" class="form-control" required maxlength="4" pattern="\d{4}" placeholder="••••" style="text-align:center; font-size: 18px; letter-spacing: 6px;">
+        </div>
+        <div class="form-group">
+          <label for="pin-confirm">Confirm New 4-Digit PIN</label>
+          <input type="password" id="pin-confirm" class="form-control" required maxlength="4" pattern="\d{4}" placeholder="••••" style="text-align:center; font-size: 18px; letter-spacing: 6px;">
+        </div>
+
+        <!-- OTP verification step (hidden initially) -->
+        <div class="form-group" id="pin-otp-container" style="display: none; border-top: 1px dashed var(--border-color); padding-top: 16px; margin-top: 16px;">
+          <label for="pin-otp" style="color: var(--warning); font-weight: 700;">Enter OTP from Laptop Console Screen</label>
+          <input type="text" id="pin-otp" class="form-control" maxlength="6" pattern="\d{6}" placeholder="000000" style="text-align:center; font-size: 22px; letter-spacing: 12px; font-weight: 800; border-color: var(--warning);">
+          <small style="display: block; text-align: center; color: var(--text-muted); margin-top: 6px;">A verification OTP has been printed on the laptop server screen.</small>
+        </div>
+        
+        <div id="change-pin-error" class="text-danger" style="margin-bottom: 12px; font-size: 13px; text-align: center; display: none; color: var(--danger);"></div>
+        <div id="change-pin-success" class="text-success" style="margin-bottom: 12px; font-size: 13px; text-align: center; display: none; color: var(--success);">PIN changed successfully!</div>
+
+        <div class="modal-footer" style="padding-top:12px; border-top:none;">
+          <button type="button" class="btn btn-secondary" id="change-pin-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="change-pin-request-btn">Request OTP</button>
+          <button type="submit" class="btn btn-warning" id="change-pin-submit-btn" style="display: none;">Verify & Update PIN</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Fullscreen Login PIN Overlay -->
+  <div id="login-overlay" class="login-overlay-active">
+    <div class="login-box">
+      <div class="login-header">
+        <div class="login-logo">GS</div>
+        <h2>Gulati Store</h2>
+        <p>POS Billing & Ledger Security Access</p>
+      </div>
+      
+      <!-- PIN Indicators -->
+      <div class="pin-display">
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+      </div>
+      
+      <!-- Error Message -->
+      <div id="login-error-msg" class="login-error">Incorrect PIN. Please try again.</div>
+      
+      <!-- Keyboard Pin Pad -->
+      <div class="pin-pad">
+        <button class="pin-btn" onclick="pressPinNumber(1)">1</button>
+        <button class="pin-btn" onclick="pressPinNumber(2)">2</button>
+        <button class="pin-btn" onclick="pressPinNumber(3)">3</button>
+        
+        <button class="pin-btn" onclick="pressPinNumber(4)">4</button>
+        <button class="pin-btn" onclick="pressPinNumber(5)">5</button>
+        <button class="pin-btn" onclick="pressPinNumber(6)">6</button>
+        
+        <button class="pin-btn" onclick="pressPinNumber(7)">7</button>
+        <button class="pin-btn" onclick="pressPinNumber(8)">8</button>
+        <button class="pin-btn" onclick="pressPinNumber(9)">9</button>
+        
+        <button class="pin-btn clear" onclick="clearPin()">C</button>
+        <button class="pin-btn" onclick="pressPinNumber(0)">0</button>
+        <button class="pin-btn backspace" onclick="backspacePin()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Javascript Modules -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="initial-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
