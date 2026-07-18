@@ -1,0 +1,2882 @@
+/**
+ * Gulati Store POS - Core JavaScript Application Logic
+ * State Management, POS Cart Actions, Indian GST Engine, CSV Parser, SVG Charting
+ */
+
+// Global State
+let state = {
+  products: [],
+  cart: [],
+  transactions: [],
+  customers: [],
+  ledgerEntries: [],
+  settings: {},
+  activePage: 'dashboard',
+  activeStatementPhone: ''
+};
+
+// Initialize Application
+document.addEventListener("DOMContentLoaded", async () => {
+  await initData();
+  setupNavigation();
+  setupPOSCartActions();
+  setupScannerSimulator();
+  setupInventoryActions();
+  setupTransactionsLedger();
+  setupCSVImportExport();
+  setupCustomerLedgerActions();
+  setupStoreSettings(); // Initialize store and printer settings listeners
+  
+  // Initial renders
+  renderAll();
+
+  // Register Service Worker for PWA (Mobile App Installation)
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('./service-worker.js');
+      console.log('Service Worker registered successfully.');
+    } catch (err) {
+      console.warn('Service Worker registration failed:', err);
+    }
+  }
+});
+
+// ----------------------------------------------------
+// DATA PERSISTENCE & INITIALIZATION
+// ----------------------------------------------------
+async function initData() {
+  let loadedState = null;
+
+  // 1. Try to load from SQLite server with auth token
+  try {
+    const response = await fetch('/api/data', {
+      headers: getAuthHeaders()
+    });
+    
+    if (response.status === 401) {
+      showLoginScreen();
+      return; // Stop initialization until authenticated
+    }
+
+    if (response.ok) {
+      const serverData = await response.json();
+      if (serverData && serverData.products && serverData.products.length > 0) {
+        loadedState = serverData;
+        console.log("Loaded data from SQLite server successfully.");
+      }
+    }
+  } catch (err) {
+    console.warn("Could not connect to database server, checking local storage:", err);
+  }
+
+  // 2. If server database is empty or unreachable, try local storage
+  if (!loadedState) {
+    const localProducts = localStorage.getItem("fc_products");
+    if (localProducts) {
+      loadedState = {
+        products: JSON.parse(localProducts),
+        transactions: JSON.parse(localStorage.getItem("fc_transactions") || "[]"),
+        customers: JSON.parse(localStorage.getItem("fc_customers") || "[]"),
+        ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
+      };
+      console.log("Loaded data from localStorage.");
+      
+      // Sync existing data up to SQLite server
+      syncToServer(loadedState);
+    }
+  }
+
+  // 3. If both are empty, load default seeded data
+  if (!loadedState) {
+    loadedState = {
+      products: [...INITIAL_PRODUCTS],
+      transactions: [...INITIAL_TRANSACTIONS],
+      customers: [
+        { name: "Rahul Sharma", phone: "9876543210", totalPurchased: 396.00, balance: 0.00, lastTxn: getDateDaysAgo(6) },
+        { name: "Priya Patel", phone: "9911223344", totalPurchased: 706.20, balance: 706.20, lastTxn: getDateDaysAgo(5) },
+        { name: "Aman Verma", phone: "9812345678", totalPurchased: 519.70, balance: 0.00, lastTxn: getDateDaysAgo(4) },
+        { name: "Sanjay Gupta", phone: "9009009001", totalPurchased: 943.36, balance: 400.00, lastTxn: getDateDaysAgo(3) }
+      ],
+      ledgerEntries: [
+        { date: getDateDaysAgo(5) + "T14:30:22Z", phone: "9911223344", type: "debit", amount: 706.20, ref: "TXN-902149" },
+        { date: getDateDaysAgo(3) + "T11:20:00Z", phone: "9009009001", type: "debit", amount: 943.36, ref: "TXN-902151" },
+        { date: getDateDaysAgo(2) + "T12:00:00Z", phone: "9009009001", type: "credit", amount: 543.36, ref: "Cash" }
+      ]
+    };
+    console.log("Loaded default seeded data.");
+    
+    // Cache to local storage as backup
+    localStorage.setItem("fc_products", JSON.stringify(loadedState.products));
+    localStorage.setItem("fc_transactions", JSON.stringify(loadedState.transactions));
+    localStorage.setItem("fc_customers", JSON.stringify(loadedState.customers));
+    localStorage.setItem("fc_ledger", JSON.stringify(loadedState.ledgerEntries));
+    
+    // Save to SQLite server
+    syncToServer(loadedState);
+  }
+
+  // Bind to application state
+  state.products = loadedState.products;
+  state.transactions = loadedState.transactions;
+  state.customers = loadedState.customers;
+  state.ledgerEntries = loadedState.ledgerEntries;
+
+  // Bind settings
+  state.settings = {};
+  if (loadedState.settings && Array.isArray(loadedState.settings)) {
+    loadedState.settings.forEach(s => {
+      state.settings[s.key] = s.value;
+    });
+  }
+  // Ensure default fallbacks are defined
+  if (!state.settings.printer_name) state.settings.printer_name = localStorage.getItem('fc_printer_name') || 'Default';
+  if (!state.settings.auto_print) state.settings.auto_print = localStorage.getItem('fc_auto_print') || 'false';
+  if (!state.settings.gstin) state.settings.gstin = localStorage.getItem('fc_gstin') || '07AAAAA1111A1Z1';
+}
+
+async function syncToServer(overrideState = null) {
+  if (window.location.protocol === 'file:') {
+    return; // Skip syncing if page is loaded locally directly from file://
+  }
+  try {
+    const payload = overrideState || {
+      products: state.products,
+      transactions: state.transactions,
+      customers: state.customers,
+      ledgerEntries: state.ledgerEntries
+    };
+    const response = await fetch('/api/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (response.status === 401) {
+      showLoginScreen();
+      return;
+    }
+
+    if (!response.ok) {
+      console.error("Failed to sync database state to SQLite server:", response.statusText);
+    }
+  } catch (err) {
+    console.error("Network error, failed to sync state to SQLite server:", err);
+  }
+}
+
+function saveCustomersToStorage() {
+  localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+  syncToServer();
+}
+
+function saveLedgerToStorage() {
+  localStorage.setItem("fc_ledger", JSON.stringify(state.ledgerEntries));
+  syncToServer();
+}
+
+function saveProductsToStorage() {
+  localStorage.setItem("fc_products", JSON.stringify(state.products));
+  syncToServer();
+}
+
+function saveTransactionsToStorage() {
+  localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+  syncToServer();
+}
+
+// ----------------------------------------------------
+// NAVIGATION SYSTEM
+// ----------------------------------------------------
+function setupNavigation() {
+  const navItems = document.querySelectorAll(".nav-item");
+  const pages = document.querySelectorAll(".page-view");
+  const sidebar = document.getElementById("sidebar");
+  const menuToggle = document.getElementById("mobile-menu-toggle");
+
+  // Mobile menu toggle click listener
+  if (menuToggle && sidebar) {
+    menuToggle.addEventListener("click", () => {
+      sidebar.classList.toggle("menu-open");
+    });
+  }
+
+  navItems.forEach(item => {
+    item.addEventListener("click", () => {
+      const targetPage = item.getAttribute("data-page");
+      
+      // Auto-collapse mobile menu when a nav link is clicked
+      if (sidebar) {
+        sidebar.classList.remove("menu-open");
+      }
+
+      // Update sidebar active class
+      navItems.forEach(nav => nav.classList.remove("active"));
+      item.classList.add("active");
+
+      // Toggle visible page
+      pages.forEach(page => {
+        page.classList.remove("active");
+        if (page.id === `${targetPage}-view`) {
+          page.classList.add("active");
+        }
+      });
+
+      state.activePage = targetPage;
+      renderAll();
+
+      // Auto focus scanner input when switching to POS
+      if (targetPage === 'pos') {
+        setTimeout(() => {
+          const scannerInput = document.getElementById("pos-scanner-sim-input");
+          if (scannerInput) scannerInput.focus();
+        }, 100);
+      }
+    });
+  });
+}
+
+function renderAll() {
+  if (state.activePage === 'dashboard') {
+    renderDashboard();
+  } else if (state.activePage === 'pos') {
+    renderPOSCatalog();
+    renderPOSCart();
+    renderCategoriesTabs();
+    updatePOSCustomerDatalists();
+  } else if (state.activePage === 'inventory') {
+    renderInventory();
+    renderInventoryCategoriesFilter();
+  } else if (state.activePage === 'transactions') {
+    renderTransactions();
+  } else if (state.activePage === 'ledger') {
+    renderLedger();
+  }
+}
+
+// Helper: Format Currency (Rupee Format)
+function formatRupee(amount) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2
+  }).format(amount);
+}
+
+// Helper: Format Date
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }) + " " + date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+// ----------------------------------------------------
+// VIEW 1: DASHBOARD RENDER
+// ----------------------------------------------------
+function renderDashboard() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  
+  // 1. Calculations for Statistics
+  // Filter today's completed transactions
+  const todaysTxns = state.transactions.filter(t => t.date.startsWith(todayStr));
+  
+  const totalSalesToday = todaysTxns.reduce((acc, curr) => acc + curr.totalPayable, 0);
+  const totalGstToday = todaysTxns.reduce((acc, curr) => acc + curr.gstAmount, 0);
+  const totalProducts = state.products.length;
+  const lowStockCount = state.products.filter(p => p.stock <= p.reorderLevel).length;
+
+  // Update elements
+  document.getElementById("stat-sales").innerText = formatRupee(totalSalesToday);
+  document.getElementById("stat-products").innerText = totalProducts;
+  document.getElementById("stat-lowstock").innerText = lowStockCount;
+  document.getElementById("stat-gst").innerText = formatRupee(totalGstToday);
+
+  // Toggle low stock warning badge color
+  const lowStockCard = document.querySelector(".stat-card.lowstock");
+  if (lowStockCount > 0) {
+    lowStockCard.style.borderColor = "var(--warning)";
+  } else {
+    lowStockCard.style.borderColor = "var(--border-color)";
+  }
+
+  // 2. Render Recent Billings List
+  const recentList = document.getElementById("dashboard-recent-list");
+  recentList.innerHTML = "";
+  
+  // Sort transactions by date descending, take top 5
+  const sortedTxns = [...state.transactions]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5);
+
+  if (sortedTxns.length === 0) {
+    recentList.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:13px; padding:20px;">No recent transactions.</div>`;
+  } else {
+    sortedTxns.forEach(txn => {
+      const item = document.createElement("div");
+      item.className = "activity-item";
+      item.innerHTML = `
+        <div class="activity-info">
+          <h4>${txn.id}</h4>
+          <p>${txn.customerName || "Walk-in Customer"} &bull; ${txn.paymentMethod}</p>
+        </div>
+        <div class="activity-amount">${formatRupee(txn.totalPayable)}</div>
+      `;
+      recentList.appendChild(item);
+    });
+  }
+
+  // 3. Render Sales Trends Chart (SVG)
+  renderSalesTrendChart();
+}
+
+function renderSalesTrendChart() {
+  const container = document.getElementById("dashboard-chart-container");
+  if (!container) return;
+
+  // Get data for past 7 days
+  const chartData = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    
+    // Filter sales on this day
+    const daySales = state.transactions
+      .filter(t => t.date.startsWith(dateStr))
+      .reduce((acc, curr) => acc + curr.totalPayable, 0);
+
+    chartData.push({
+      label: date.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit' }),
+      value: daySales
+    });
+  }
+
+  // Draw custom SVG
+  const width = container.clientWidth || 500;
+  const height = 280;
+  const paddingX = 60;
+  const paddingY = 40;
+
+  const maxVal = Math.max(...chartData.map(d => d.value), 1000); // minimum scale peak at 1000
+  const yMultiplier = (height - paddingY * 2) / maxVal;
+  const xSpacer = (width - paddingX * 2) / (chartData.length - 1);
+
+  // SVG Shell
+  let svgContent = `
+    <svg viewBox="0 0 ${width} ${height}" class="chart-svg">
+      <defs>
+        <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="var(--primary)" stop-opacity="0.0"/>
+        </linearGradient>
+      </defs>
+  `;
+
+  // Draw Horizontal Grid Lines
+  const gridLinesCount = 4;
+  for (let i = 0; i <= gridLinesCount; i++) {
+    const gridY = paddingY + (height - paddingY * 2) * (i / gridLinesCount);
+    const gridValue = maxVal * (1 - i / gridLinesCount);
+    svgContent += `
+      <line x1="${paddingX}" y1="${gridY}" x2="${width - paddingX}" y2="${gridY}" class="chart-grid-line" />
+      <text x="${paddingX - 10}" y="${gridY + 4}" fill="var(--text-muted)" font-size="10" text-anchor="end">${Math.round(gridValue)}</text>
+    `;
+  }
+
+  // Calculate Chart Coordinate Points
+  const points = chartData.map((d, index) => {
+    const x = paddingX + index * xSpacer;
+    const y = height - paddingY - d.value * yMultiplier;
+    return { x, y, value: d.value, label: d.label };
+  });
+
+  // Area Path
+  let areaD = `M ${points[0].x} ${height - paddingY}`;
+  points.forEach(p => {
+    areaD += ` L ${p.x} ${p.y}`;
+  });
+  areaD += ` L ${points[points.length - 1].x} ${height - paddingY} Z`;
+  svgContent += `<path d="${areaD}" class="chart-area" />`;
+
+  // Line Path
+  let lineD = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    lineD += ` L ${points[i].x} ${points[i].y}`;
+  }
+  svgContent += `<path d="${lineD}" class="chart-line" />`;
+
+  // Interactive points & Date labels
+  points.forEach(p => {
+    // Circle
+    svgContent += `
+      <circle cx="${p.x}" cy="${p.y}" r="5" class="chart-point" data-val="${p.value}" data-lbl="${p.label}" />
+    `;
+    // Label x-axis
+    svgContent += `
+      <text x="${p.x}" y="${height - paddingY + 20}" fill="var(--text-secondary)" font-size="11" text-anchor="middle" font-weight="500">${p.label}</text>
+    `;
+  });
+
+  svgContent += `</svg>`;
+  container.innerHTML = svgContent;
+
+  // Add Tooltip interactions
+  const tooltip = document.createElement("div");
+  tooltip.className = "chart-tooltip";
+  container.appendChild(tooltip);
+
+  const circles = container.querySelectorAll(".chart-point");
+  circles.forEach(circle => {
+    circle.addEventListener("mouseenter", (e) => {
+      const val = parseFloat(e.target.getAttribute("data-val"));
+      const lbl = e.target.getAttribute("data-lbl");
+      
+      tooltip.innerHTML = `<strong>${lbl}</strong><br>Sales: ${formatRupee(val)}`;
+      tooltip.style.display = "block";
+      
+      const parentRect = container.getBoundingClientRect();
+      const circleX = e.target.cx.baseVal.value;
+      const circleY = e.target.cy.baseVal.value;
+      
+      tooltip.style.left = `${circleX - tooltip.offsetWidth / 2}px`;
+      tooltip.style.top = `${circleY - tooltip.offsetHeight - 10}px`;
+    });
+
+    circle.addEventListener("mouseleave", () => {
+      tooltip.style.display = "none";
+    });
+  });
+}
+
+// ----------------------------------------------------
+// VIEW 2: POS CATALOG & BILLING
+// ----------------------------------------------------
+let posSelectedCategory = "all";
+let posSearchQuery = "";
+
+function renderCategoriesTabs() {
+  const tabsContainer = document.getElementById("pos-category-tabs");
+  if (!tabsContainer) return;
+  tabsContainer.innerHTML = "";
+
+  // Extract unique categories from products list
+  const categories = ["all", ...new Set(state.products.map(p => p.category))];
+
+  categories.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = `category-tab ${posSelectedCategory === cat ? "active" : ""}`;
+    btn.innerText = cat === "all" ? "All Items" : cat;
+    
+    btn.addEventListener("click", () => {
+      posSelectedCategory = cat;
+      renderCategoriesTabs();
+      renderPOSCatalog();
+    });
+    
+    tabsContainer.appendChild(btn);
+  });
+}
+
+function renderPOSCatalog() {
+  const catalogGrid = document.getElementById("pos-catalog-grid");
+  if (!catalogGrid) return;
+  catalogGrid.innerHTML = "";
+
+  // Filter products by category and query
+  const filteredProducts = state.products.filter(p => {
+    const matchesCategory = posSelectedCategory === "all" || p.category === posSelectedCategory;
+    const matchesSearch = p.name.toLowerCase().includes(posSearchQuery.toLowerCase()) || 
+                          p.sku.includes(posSearchQuery);
+    return matchesCategory && matchesSearch;
+  });
+
+  if (filteredProducts.length === 0) {
+    catalogGrid.innerHTML = `<div style="grid-column: span 4; text-align:center; color:var(--text-muted); font-size:14px; padding:30px;">No matching products found.</div>`;
+    return;
+  }
+
+  filteredProducts.forEach(prod => {
+    const card = document.createElement("div");
+    card.className = "product-item-card";
+    
+    let stockClass = "stock-ok";
+    let stockText = `${prod.stock} ${prod.unit} left`;
+    
+    if (prod.stock <= 0) {
+      stockClass = "stock-empty";
+      stockText = "Out of stock";
+    } else if (prod.stock <= prod.reorderLevel) {
+      stockClass = "stock-low";
+      stockText = "Low stock";
+    }
+
+    card.innerHTML = `
+      <div>
+        <span class="item-sku-badge">${prod.sku}</span>
+        <span class="item-gst-tag">${prod.gstSlab}% GST</span>
+        <h3 class="item-name">${prod.name}</h3>
+      </div>
+      <div class="item-bottom">
+        <span class="item-price">${formatRupee(prod.sellingPrice)}</span>
+        <span class="item-stock ${stockClass}">${stockText}</span>
+      </div>
+    `;
+
+    // Click handler to add to cart
+    card.addEventListener("click", () => {
+      if (prod.stock <= 0) {
+        alert(`${prod.name} is currently out of stock!`);
+        return;
+      }
+      addToCart(prod.sku);
+    });
+
+    catalogGrid.appendChild(card);
+  });
+}
+
+function setupPOSCartActions() {
+  // Search input change
+  const searchInput = document.getElementById("pos-search-input");
+  searchInput.addEventListener("input", (e) => {
+    posSearchQuery = e.target.value;
+    renderPOSCatalog();
+  });
+
+  // Client Datalist autofill hooks
+  const phoneInput = document.getElementById("pos-customer-phone");
+  const nameInput = document.getElementById("pos-customer-name");
+
+  phoneInput.addEventListener("input", (e) => {
+    const phone = e.target.value.trim();
+    if (phone.length === 10) {
+      const existing = state.customers.find(c => c.phone === phone);
+      if (existing) {
+        nameInput.value = existing.name;
+        // visual success glow
+        phoneInput.style.borderColor = "var(--primary)";
+        nameInput.style.borderColor = "var(--primary)";
+        setTimeout(() => {
+          phoneInput.style.borderColor = "var(--border-color)";
+          nameInput.style.borderColor = "var(--border-color)";
+        }, 1000);
+      }
+    }
+  });
+
+  nameInput.addEventListener("change", (e) => {
+    const name = e.target.value.trim();
+    const existing = state.customers.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      phoneInput.value = existing.phone;
+      // visual success glow
+      phoneInput.style.borderColor = "var(--primary)";
+      nameInput.style.borderColor = "var(--primary)";
+      setTimeout(() => {
+        phoneInput.style.borderColor = "var(--border-color)";
+        nameInput.style.borderColor = "var(--border-color)";
+      }, 1000);
+    }
+  });
+
+  // Custom Quick Add
+  const customAddBtn = document.getElementById("pos-custom-add-btn");
+  customAddBtn.addEventListener("click", () => {
+    const nameInput = document.getElementById("pos-custom-name");
+    const priceInput = document.getElementById("pos-custom-price");
+    const gstInput = document.getElementById("pos-custom-gst");
+    const unitInput = document.getElementById("pos-custom-unit");
+    const saveCatalogCheckbox = document.getElementById("pos-custom-save-catalog");
+
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    const gst = parseInt(gstInput.value);
+    const unit = unitInput ? unitInput.value : "pcs";
+    const saveCatalog = saveCatalogCheckbox ? saveCatalogCheckbox.checked : false;
+
+    if (!name || isNaN(price) || price <= 0) {
+      alert("Please enter a valid Custom Item Name and Price.");
+      return;
+    }
+
+    if (saveCatalog) {
+      // Check duplication in catalog
+      const duplicate = state.products.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (duplicate) {
+        alert("A product with this name already exists in your inventory catalog. Adding it from catalog instead.");
+        addToCart(duplicate.sku);
+      } else {
+        // Create permanent product in inventory catalog
+        const autoSku = `CUST-${Math.floor(10000 + Math.random() * 90000)}`;
+        const newProduct = {
+          sku: autoSku,
+          name: name,
+          category: "Produce", // default
+          hsn: "9999", // default
+          costPrice: Number((price * 0.8).toFixed(2)), // assume 20% margin
+          sellingPrice: price,
+          gstSlab: gst,
+          stock: 100, // seed initial stock
+          reorderLevel: 5,
+          unit: unit,
+          discountPercent: 0
+        };
+        state.products.push(newProduct);
+        saveProductsToStorage();
+        
+        // Add to cart as a regular product
+        addToCart(autoSku);
+        
+        // Re-render categories and catalog list
+        renderCategoriesTabs();
+        renderPOSCatalog();
+      }
+    } else {
+      // Add a custom quick item just to this cart
+      const customSku = `CUSTOM-${Date.now()}`;
+      const customItem = {
+        sku: customSku,
+        name: name,
+        sellingPrice: price,
+        costPrice: Number((price * 0.8).toFixed(2)),
+        category: "Produce",
+        hsn: "9999",
+        gstSlab: gst,
+        unit: unit,
+        isCustom: true
+      };
+
+      // Push into active cart list directly
+      state.cart.push({
+        product: customItem,
+        quantity: 1
+      });
+      renderPOSCart();
+    }
+
+    // Reset inputs
+    nameInput.value = "";
+    priceInput.value = "";
+    gstInput.value = "0";
+    if (saveCatalogCheckbox) saveCatalogCheckbox.checked = false;
+  });
+
+  // Clear Cart
+  document.getElementById("pos-clear-cart-btn").addEventListener("click", () => {
+    state.cart = [];
+    renderPOSCart();
+  });
+
+  // Discount changes
+  document.getElementById("pos-discount-type").addEventListener("change", renderPOSCart);
+  document.getElementById("pos-discount-value").addEventListener("input", renderPOSCart);
+
+  // Checkout Button
+  document.getElementById("pos-checkout-btn").addEventListener("click", checkoutCart);
+  
+  // Close Receipt Modal
+  document.getElementById("receipt-close-btn").addEventListener("click", () => {
+    document.getElementById("receipt-modal").classList.remove("active");
+  });
+  
+  // Print Button inside modal
+  document.getElementById("receipt-print-btn").addEventListener("click", () => {
+    window.print();
+  });
+}
+
+function addToCart(sku) {
+  const product = state.products.find(p => p.sku === sku);
+  if (!product) return;
+
+  const existing = state.cart.find(item => item.product.sku === sku);
+  
+  if (existing) {
+    if (existing.quantity >= product.stock) {
+      alert(`Cannot add more. Available store inventory: ${product.stock} units.`);
+      return;
+    }
+    existing.quantity += 1;
+  } else {
+    state.cart.push({
+      product: { ...product },
+      quantity: 1
+    });
+  }
+
+  renderPOSCart();
+  playBeep(); // Trigger scanner simulated beep sound on add!
+}
+
+function changeCartQty(sku, delta) {
+  const cartItem = state.cart.find(item => item.product.sku === sku);
+  if (!cartItem) return;
+
+  // If standard product, validate stock bounds
+  if (!cartItem.product.isCustom) {
+    const parentProduct = state.products.find(p => p.sku === sku);
+    if (parentProduct && (cartItem.quantity + delta) > parentProduct.stock) {
+      alert(`Cannot add more. Available store inventory: ${parentProduct.stock} units.`);
+      return;
+    }
+  }
+
+  cartItem.quantity = Number((cartItem.quantity + delta).toFixed(2));
+  if (cartItem.quantity <= 0.001) {
+    state.cart = state.cart.filter(item => item.product.sku !== sku);
+  }
+
+  renderPOSCart();
+}
+
+window.updateCartItemQtyDirectly = function(sku, value) {
+  const cartItem = state.cart.find(item => item.product.sku === sku);
+  if (!cartItem) return;
+
+  let qty = parseFloat(value);
+  if (isNaN(qty) || qty <= 0) {
+    qty = 1;
+  }
+
+  // If standard product, validate stock bounds
+  if (!cartItem.product.isCustom) {
+    const parentProduct = state.products.find(p => p.sku === sku);
+    if (parentProduct && qty > parentProduct.stock) {
+      alert(`Cannot add more. Available store inventory: ${parentProduct.stock} units.`);
+      qty = parentProduct.stock;
+    }
+  }
+
+  cartItem.quantity = Number(qty.toFixed(2));
+  renderPOSCart();
+};
+
+function deleteCartItem(sku) {
+  state.cart = state.cart.filter(item => item.product.sku !== sku);
+  renderPOSCart();
+}
+
+function renderPOSCart() {
+  const cartWrapper = document.getElementById("pos-cart-items");
+  const emptyState = document.getElementById("pos-empty-state");
+  const cartCountTag = document.getElementById("pos-cart-count");
+
+  // Clear previous list, keeping empty state helper
+  const listItems = cartWrapper.querySelectorAll(".cart-item");
+  listItems.forEach(item => item.remove());
+
+  if (state.cart.length === 0) {
+    emptyState.style.display = "flex";
+    cartCountTag.innerText = "0 Items";
+    
+    // Clear display amounts
+    document.getElementById("summary-subtotal").innerText = formatRupee(0);
+    document.getElementById("summary-cgst").innerText = formatRupee(0);
+    document.getElementById("summary-sgst").innerText = formatRupee(0);
+    document.getElementById("summary-discount").innerText = formatRupee(0);
+    document.getElementById("summary-total").innerText = formatRupee(0);
+    return;
+  }
+
+  emptyState.style.display = "none";
+  
+  const totalQty = state.cart.reduce((acc, curr) => acc + curr.quantity, 0);
+  cartCountTag.innerText = `${Number(totalQty.toFixed(2))} items`;
+
+  // 1. Calculate Totals
+  let grossTotal = 0; // Cumulative inclusive value before discounts
+  
+  state.cart.forEach(item => {
+    const discountPct = item.product.discountPercent || 0;
+    const netUnitPrice = item.product.sellingPrice * (1 - discountPct / 100);
+    const lineTotal = netUnitPrice * item.quantity;
+    grossTotal += lineTotal;
+
+    const step = item.product.unit === 'kg' ? 0.1 : 1;
+
+    let priceDetails = `${formatRupee(item.product.sellingPrice)} per ${item.product.unit} &bull; GST ${item.product.gstSlab}%`;
+    if (discountPct > 0) {
+      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit} <span style="text-decoration:line-through; font-size:11px; color:var(--text-muted); margin-left:4px;">${formatRupee(item.product.sellingPrice)}</span> <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${item.product.gstSlab}%`;
+    }
+
+    const div = document.createElement("div");
+    div.className = "cart-item";
+    div.innerHTML = `
+      <div class="cart-item-details">
+        <h4>${item.product.name}</h4>
+        <p>${priceDetails}</p>
+      </div>
+      <div class="cart-item-qty">
+        <button class="qty-btn" onclick="changeCartQty('${item.product.sku}', -${step})">-</button>
+        <input type="number" class="qty-input-box" value="${item.quantity}" min="0.01" step="${step}" style="width:55px; text-align:center; background:var(--bg-main); border:1px solid var(--border-color); border-radius:4px; font-size:13px; color:var(--text-primary); font-weight:600; padding:2px;" onchange="updateCartItemQtyDirectly('${item.product.sku}', this.value)">
+        <button class="qty-btn" onclick="changeCartQty('${item.product.sku}', ${step})">+</button>
+      </div>
+      <div class="cart-item-price">${formatRupee(lineTotal)}</div>
+      <div class="cart-item-delete" onclick="deleteCartItem('${item.product.sku}')">Remove item</div>
+    `;
+    cartWrapper.appendChild(div);
+  });
+
+  // Calculate discount
+  const discType = document.getElementById("pos-discount-type").value;
+  const discVal = parseFloat(document.getElementById("pos-discount-value").value) || 0;
+  let totalDiscount = 0;
+
+  if (discType === 'flat') {
+    totalDiscount = Math.min(discVal, grossTotal);
+  } else if (discType === 'percentage') {
+    totalDiscount = (grossTotal * Math.min(discVal, 100)) / 100;
+  }
+
+  // 2. GST Extraction & Splits calculations (compliant with Indian rules)
+  // To divide tax fairly, we allocate the discount proportionally to each item's sale value
+  let totalTaxableSubtotal = 0;
+  let totalGstAmount = 0;
+
+  state.cart.forEach(item => {
+    const itemInclusiveTotal = item.product.sellingPrice * item.quantity;
+    
+    // Proportional discount slice for this item
+    const proportionalDiscount = grossTotal > 0 ? (itemInclusiveTotal / grossTotal) * totalDiscount : 0;
+    const netItemInclusive = itemInclusiveTotal - proportionalDiscount;
+    
+    // Extract base taxable value: Base = Inclusive / (1 + GST_Rate%)
+    const baseTaxable = netItemInclusive / (1 + item.product.gstSlab / 100);
+    const gstValue = netItemInclusive - baseTaxable;
+
+    totalTaxableSubtotal += baseTaxable;
+    totalGstAmount += gstValue;
+  });
+
+  const payableTotal = grossTotal - totalDiscount;
+
+  // Split GST 50-50 for intra-state Indian sales (CGST & SGST)
+  const cgstAmount = totalGstAmount / 2;
+  const sgstAmount = totalGstAmount / 2;
+
+  // Update summary fields
+  document.getElementById("summary-subtotal").innerText = formatRupee(totalTaxableSubtotal);
+  document.getElementById("summary-cgst").innerText = formatRupee(cgstAmount);
+  document.getElementById("summary-sgst").innerText = formatRupee(sgstAmount);
+  document.getElementById("summary-discount").innerText = "-" + formatRupee(totalDiscount);
+  document.getElementById("summary-total").innerText = formatRupee(payableTotal);
+}
+
+// ----------------------------------------------------
+// SCANNER SIMULATOR AUDIO & LOGIC
+// ----------------------------------------------------
+function setupScannerSimulator() {
+  const scanInput = document.getElementById("pos-scanner-sim-input");
+  const scannerCard = document.getElementById("scanner-sim-card");
+
+  scanInput.addEventListener("focus", () => {
+    scannerCard.classList.add("active");
+  });
+
+  scanInput.addEventListener("blur", () => {
+    // Keep it green since listener is technically background, but for UI feedback:
+    scannerCard.classList.remove("active");
+  });
+
+  // Intercept enter keypress
+  scanInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const sku = scanInput.value.trim();
+      if (!sku) return;
+
+      // Find in products
+      const prod = state.products.find(p => p.sku === sku);
+      if (prod) {
+        if (prod.stock <= 0) {
+          alert(`${prod.name} is out of stock!`);
+        } else {
+          addToCart(sku);
+          // Visual feedback glow
+          scanInput.style.backgroundColor = "hsla(142, 70%, 45%, 0.2)";
+          setTimeout(() => {
+            scanInput.style.backgroundColor = "var(--bg-main)";
+          }, 300);
+        }
+      } else {
+        // Failed scan visual warning
+        scanInput.style.backgroundColor = "hsla(0, 84%, 60%, 0.2)";
+        setTimeout(() => {
+          scanInput.style.backgroundColor = "var(--bg-main)";
+        }, 300);
+        alert(`Product with SKU "${sku}" not found in inventory.`);
+      }
+
+      scanInput.value = ""; // clear
+      scanInput.focus(); // maintain focus
+    }
+  });
+
+  // Global keypress listener - if user is on POS billing view and starts typing a number, redirect focus to scanner
+  window.addEventListener("keydown", (e) => {
+    // Skip if focus is inside any existing input
+    if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT") {
+      return;
+    }
+    
+    // Only if active tab is POS
+    if (state.activePage === 'pos') {
+      // Focus simulator box if alphanumeric key is pressed
+      if (/^[a-zA-Z0-9]$/.test(e.key)) {
+        scanInput.focus();
+        // Append typed character manually after focus delay
+        setTimeout(() => {
+          scanInput.value += e.key;
+        }, 10);
+      }
+    }
+  });
+}
+
+// Play Scanner Beep Sound using Web Audio API
+function playBeep() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(1050, audioCtx.currentTime); // High pitch retail chirp
+    gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    
+    // Short exponential decay for clean crisp beep click
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.09);
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.1);
+  } catch (e) {
+    console.warn("Audio Context blocked or unsupported.", e);
+  }
+}
+
+// ----------------------------------------------------
+// CHECKOUT & RECEIPT ENGINE
+// ----------------------------------------------------
+function checkoutCart() {
+  if (state.cart.length === 0) return;
+
+  const nameInput = document.getElementById("pos-customer-name");
+  const phoneInput = document.getElementById("pos-customer-phone");
+  const payMethod = document.getElementById("pos-payment-method").value;
+
+  const customerName = nameInput.value.trim();
+  const customerPhone = phoneInput.value.trim();
+
+  // Validate phone if credit or provided
+  if (payMethod === 'Credit') {
+    if (!customerName || !customerPhone || !/^\d{10}$/.test(customerPhone)) {
+      alert("Customer Name and a valid 10-digit Indian Phone Number are required for Credit/Khata transactions.");
+      return;
+    }
+  } else if (customerPhone && !/^\d{10}$/.test(customerPhone)) {
+    alert("Please enter a valid 10-digit Indian Mobile Number.");
+    return;
+  }
+
+  // Calculate numbers
+  let grossTotal = 0;
+  state.cart.forEach(item => {
+    const discountPct = item.product.discountPercent || 0;
+    const netUnitPrice = item.product.sellingPrice * (1 - discountPct / 100);
+    grossTotal += netUnitPrice * item.quantity;
+  });
+
+  const discType = document.getElementById("pos-discount-type").value;
+  const discVal = parseFloat(document.getElementById("pos-discount-value").value) || 0;
+  let totalDiscount = 0;
+
+  if (discType === 'flat') {
+    totalDiscount = Math.min(discVal, grossTotal);
+  } else if (discType === 'percentage') {
+    totalDiscount = (grossTotal * Math.min(discVal, 100)) / 100;
+  }
+
+  // Calculate detailed taxes per item and total base values
+  let totalTaxableSubtotal = 0;
+  let totalGstAmount = 0;
+  const detailedInvoiceItems = [];
+
+  state.cart.forEach(item => {
+    const discountPct = item.product.discountPercent || 0;
+    const netUnitPrice = item.product.sellingPrice * (1 - discountPct / 100);
+    const itemInclusiveTotal = netUnitPrice * item.quantity;
+    const proportionalDiscount = grossTotal > 0 ? (itemInclusiveTotal / grossTotal) * totalDiscount : 0;
+    const netItemInclusive = itemInclusiveTotal - proportionalDiscount;
+    
+    const baseTaxable = netItemInclusive / (1 + item.product.gstSlab / 100);
+    const gstValue = netItemInclusive - baseTaxable;
+
+    totalTaxableSubtotal += baseTaxable;
+    totalGstAmount += gstValue;
+
+    detailedInvoiceItems.push({
+      sku: item.product.sku,
+      name: item.product.name,
+      hsn: item.product.hsn || "9999",
+      sellingPrice: netUnitPrice,
+      originalPrice: item.product.sellingPrice,
+      discountPercent: discountPct,
+      quantity: item.quantity,
+      gstSlab: item.product.gstSlab,
+      taxableValue: baseTaxable,
+      gstValue: gstValue
+    });
+
+    // Deduct stock in local inventory registry (if not custom item)
+    if (!item.product.isCustom) {
+      const realProduct = state.products.find(p => p.sku === item.product.sku);
+      if (realProduct) {
+        realProduct.stock = Math.max(0, realProduct.stock - item.quantity);
+      }
+    }
+  });
+
+  const payableTotal = grossTotal - totalDiscount;
+  const cgstAmount = totalGstAmount / 2;
+  const sgstAmount = totalGstAmount / 2;
+
+  // Save inventory changes
+  saveProductsToStorage();
+
+  // Create new transaction object
+  const txnId = `TXN-${Math.floor(100000 + Math.random() * 900000)}`;
+  const transaction = {
+    id: txnId,
+    date: new Date().toISOString(),
+    customerName: customerName || "Walk-in Customer",
+    customerPhone: customerPhone || "",
+    items: detailedInvoiceItems,
+    subtotal: totalTaxableSubtotal,
+    discountType: discType,
+    discountValue: discVal,
+    discountAmount: totalDiscount,
+    gstAmount: totalGstAmount,
+    totalPayable: payableTotal,
+    paymentMethod: payMethod
+  };
+
+  state.transactions.push(transaction);
+  saveTransactionsToStorage();
+
+  // Customer Ledger calculations
+  if (customerPhone) {
+    let cust = state.customers.find(c => c.phone === customerPhone);
+    if (!cust) {
+      cust = {
+        name: customerName,
+        phone: customerPhone,
+        totalPurchased: 0,
+        balance: 0,
+        lastTxn: new Date().toISOString().split('T')[0]
+      };
+      state.customers.push(cust);
+    }
+    cust.totalPurchased += payableTotal;
+    cust.lastTxn = new Date().toISOString().split('T')[0];
+
+    if (payMethod === 'Credit') {
+      cust.balance += payableTotal;
+      state.ledgerEntries.push({
+        date: new Date().toISOString(),
+        phone: customerPhone,
+        type: "debit",
+        amount: payableTotal,
+        ref: txnId
+      });
+    }
+    saveCustomersToStorage();
+    saveLedgerToStorage();
+  }
+
+  // Clear cart
+  state.cart = [];
+  nameInput.value = "";
+  phoneInput.value = "";
+  document.getElementById("pos-discount-value").value = "0";
+
+  // Build receipt html template and show modal
+  buildReceiptInvoice(transaction);
+  
+  // Show Receipt Modal
+  document.getElementById("receipt-invoice-id").innerText = `Invoice No: ${txnId}`;
+  document.getElementById("receipt-modal").classList.add("active");
+
+  renderAll();
+
+  // Auto-Print Receipt if active
+  if (state.settings.auto_print === "true") {
+    const textReceipt = generateTextReceipt(transaction);
+    sendReceiptToPrinter(textReceipt);
+  }
+}
+
+function buildReceiptInvoice(txn) {
+  state.lastTransaction = txn;
+  const receiptArea = document.getElementById("receipt-print-area");
+  if (!receiptArea) return;
+
+  let itemsRows = "";
+  txn.items.forEach((item, idx) => {
+    const rateBeforeTax = item.sellingPrice / (1 + item.gstSlab / 100);
+    const amountBeforeTax = rateBeforeTax * item.quantity;
+    let discountInfo = "";
+    if (item.discountPercent > 0) {
+      discountInfo = ` (Incl. ${item.discountPercent}% disc, MRP: ₹${item.originalPrice.toFixed(2)})`;
+    }
+    itemsRows += `
+      <tr>
+        <td colspan="5" style="font-weight:700;">${idx+1}. ${item.name}${discountInfo}</td>
+      </tr>
+      <tr>
+        <td style="color:#374151;">HSN:${item.hsn}</td>
+        <td style="color:#374151;">${item.quantity} pcs</td>
+        <td style="color:#374151;">₹${rateBeforeTax.toFixed(2)}</td>
+        <td style="color:#374151;">${item.gstSlab}%</td>
+        <td style="text-align:right; font-weight:600;">₹${(item.sellingPrice * item.quantity).toFixed(2)}</td>
+      </tr>
+    `;
+  });
+
+  // Calculate detailed GST rates breakdown summaries
+  const gstGroups = {};
+  txn.items.forEach(item => {
+    if (!gstGroups[item.gstSlab]) {
+      gstGroups[item.gstSlab] = { taxable: 0, gst: 0 };
+    }
+    gstGroups[item.gstSlab].taxable += item.taxableValue;
+    gstGroups[item.gstSlab].gst += item.gstValue;
+  });
+
+  let gstBreakdownRows = "";
+  Object.keys(gstGroups).forEach(slab => {
+    const slabVal = parseInt(slab);
+    const splitGstRate = slabVal / 2;
+    const cgstSplit = gstGroups[slab].gst / 2;
+    const sgstSplit = gstGroups[slab].gst / 2;
+    
+    gstBreakdownRows += `
+      <div class="receipt-row" style="margin-bottom:2px; font-size:11px; color:#4B5563;">
+        <span>GST ${slab}% (Taxable ₹${gstGroups[slab].taxable.toFixed(2)})</span>
+        <span>CGST ${splitGstRate}%: ₹${cgstSplit.toFixed(2)} | SGST ${splitGstRate}%: ₹${sgstSplit.toFixed(2)}</span>
+      </div>
+    `;
+  });
+
+  receiptArea.innerHTML = `
+    <div class="receipt-header">
+      <div class="receipt-store-title">GULATI STORE</div>
+      <div style="font-size:11px; color:#4B5563;">Shop No. 5 Sector 2 Naya Nangal</div>
+      <div style="font-size:11px; color:#4B5563;">GSTIN: ${state.settings.gstin || '07AAAAA1111A1Z1'}</div>
+      <div style="font-size:11px; color:#4B5563; margin-top:4px;">TAX INVOICE</div>
+    </div>
+    
+    <div class="receipt-meta">
+      <span>Date: ${formatDate(txn.date)}</span>
+    </div>
+    <div class="receipt-meta" style="margin-bottom:8px;">
+      <span>Bill To: ${txn.customerName} (${txn.customerPhone || "Walk-in"})</span>
+    </div>
+    
+    <table class="receipt-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;">Item / HSN</th>
+          <th style="text-align:left;">Qty</th>
+          <th style="text-align:left;">Rate</th>
+          <th style="text-align:left;">GST</th>
+          <th style="text-align:right;">Amt</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsRows}
+      </tbody>
+    </table>
+    
+    <div class="receipt-summary">
+      <div class="receipt-row">
+        <span>Taxable Subtotal:</span>
+        <span>₹${txn.subtotal.toFixed(2)}</span>
+      </div>
+      <div class="receipt-row">
+        <span>CGST Total:</span>
+        <span>₹${(txn.gstAmount / 2).toFixed(2)}</span>
+      </div>
+      <div class="receipt-row">
+        <span>SGST Total:</span>
+        <span>₹${(txn.gstAmount / 2).toFixed(2)}</span>
+      </div>
+      <div class="receipt-row">
+        <span>Discount:</span>
+        <span>-₹${txn.discountAmount.toFixed(2)}</span>
+      </div>
+      <div class="receipt-row bold">
+        <span>NET PAYABLE (Inclusive of Tax):</span>
+        <span>₹${txn.totalPayable.toFixed(2)}</span>
+      </div>
+    </div>
+    
+    <div class="receipt-gst-breakdown" style="margin-top:12px;">
+      <div style="font-weight:700; border-bottom:1px dashed #9CA3AF; padding-bottom:2px; margin-bottom:4px; font-size:11px;">GST TAX SPLIT BREAKDOWN:</div>
+      ${gstBreakdownRows}
+    </div>
+    
+    <div class="receipt-footer">
+      <p style="font-weight:700; margin-bottom:4px;">Payment Method: ${txn.paymentMethod}</p>
+      <p>Thank you for shopping with us!</p>
+      <p>Have a wonderful day!</p>
+    </div>
+  `;
+
+  // Set up WhatsApp button link dynamically
+  const waBtn = document.getElementById("receipt-whatsapp-btn");
+  if (waBtn) {
+    const waMessage = formatWhatsAppReceipt(txn);
+    const waUrl = txn.customerPhone 
+      ? `https://wa.me/91${txn.customerPhone}?text=${encodeURIComponent(waMessage)}`
+      : `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
+    
+    waBtn.onclick = function() {
+      window.open(waUrl, "_blank");
+    };
+  }
+}
+
+function formatWhatsAppReceipt(txn) {
+  let msg = `*GULATI STORE TAX INVOICE*\n`;
+  msg += `---------------------------------\n`;
+  msg += `*Invoice No:* ${txn.id}\n`;
+  msg += `*Date:* ${new Date(txn.date).toLocaleDateString('en-IN')}\n`;
+  msg += `*Bill To:* ${txn.customerName} ${txn.customerPhone ? '(' + txn.customerPhone + ')' : ''}\n\n`;
+
+  txn.items.forEach((item, idx) => {
+    const rateBeforeTax = item.sellingPrice / (1 + item.gstSlab / 100);
+    msg += `${idx + 1}. *${item.name}*\n`;
+    if (item.discountPercent > 0) {
+      msg += `   MRP: ₹${item.originalPrice.toFixed(2)} (${item.discountPercent}% Off)\n`;
+    }
+    msg += `   Qty: ${item.quantity} | Rate: ₹${rateBeforeTax.toFixed(2)} | GST: ${item.gstSlab}%\n`;
+    msg += `   Total: ₹${(item.sellingPrice * item.quantity).toFixed(2)}\n`;
+  });
+
+  msg += `\n---------------------------------\n`;
+  msg += `*Taxable Subtotal:* ₹${txn.subtotal.toFixed(2)}\n`;
+  msg += `*CGST:* ₹${(txn.gstAmount / 2).toFixed(2)}\n`;
+  msg += `*SGST:* ₹${(txn.gstAmount / 2).toFixed(2)}\n`;
+  if (txn.discountAmount > 0) {
+    msg += `*Discount:* -₹${txn.discountAmount.toFixed(2)}\n`;
+  }
+  msg += `*NET PAYABLE (Incl. Tax):* *₹${txn.totalPayable.toFixed(2)}*\n`;
+  msg += `---------------------------------\n`;
+  msg += `*Payment Method:* ${txn.paymentMethod}\n\n`;
+  msg += `Thank you for shopping with us! Have a nice day!`;
+
+  return msg;
+}
+
+// ----------------------------------------------------
+// VIEW 3: INVENTORY MANAGEMENT
+// ----------------------------------------------------
+let invSearchQuery = "";
+let invFilterCategory = "all";
+let invFilterStock = "all";
+
+function setupInventoryActions() {
+  // Search bar
+  document.getElementById("inv-search-input").addEventListener("input", (e) => {
+    invSearchQuery = e.target.value;
+    renderInventory();
+  });
+
+  // Filters
+  document.getElementById("inv-filter-category").addEventListener("change", (e) => {
+    invFilterCategory = e.target.value;
+    renderInventory();
+  });
+
+  document.getElementById("inv-filter-stock").addEventListener("change", (e) => {
+    invFilterStock = e.target.value;
+    renderInventory();
+  });
+
+  // Add Product Button Modals
+  const addModal = document.getElementById("product-modal");
+  document.getElementById("inv-add-product-btn").addEventListener("click", () => {
+    document.getElementById("product-modal-title").innerText = "Add New Product";
+    document.getElementById("prod-edit-id").value = "";
+    document.getElementById("product-form").reset();
+    document.getElementById("prod-sku").disabled = false;
+    addModal.classList.add("active");
+  });
+
+  document.getElementById("product-modal-close-btn").addEventListener("click", () => {
+    addModal.classList.remove("active");
+  });
+  document.getElementById("prod-modal-cancel-btn").addEventListener("click", () => {
+    addModal.classList.remove("active");
+  });
+
+  // Form submit handler
+  document.getElementById("product-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    saveProductForm();
+  });
+
+  // Reset database utility
+  document.getElementById("inv-reset-db-btn").addEventListener("click", () => {
+    if (confirm("WARNING: This will delete all custom inventory changes and restore original factory mock catalog. Continue?")) {
+      localStorage.removeItem("fc_products");
+      localStorage.removeItem("fc_transactions");
+      initData();
+      renderAll();
+    }
+  });
+}
+
+function renderInventoryCategoriesFilter() {
+  const select = document.getElementById("inv-filter-category");
+  if (!select) return;
+
+  const currentValue = select.value;
+  select.innerHTML = `<option value="all">All Categories</option>`;
+  
+  const categories = [...new Set(state.products.map(p => p.category))];
+  categories.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.innerText = cat;
+    select.appendChild(opt);
+  });
+
+  select.value = currentValue;
+}
+
+function renderInventory() {
+  const tableBody = document.getElementById("inventory-table-body");
+  if (!tableBody) return;
+  tableBody.innerHTML = "";
+
+  const filtered = state.products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(invSearchQuery.toLowerCase()) ||
+                          p.sku.includes(invSearchQuery) ||
+                          (p.hsn && p.hsn.includes(invSearchQuery));
+    const matchesCategory = invFilterCategory === "all" || p.category === invFilterCategory;
+    
+    let matchesStock = true;
+    if (invFilterStock === 'low') {
+      matchesStock = p.stock <= p.reorderLevel && p.stock > 0;
+    } else if (invFilterStock === 'out') {
+      matchesStock = p.stock <= 0;
+    }
+
+    return matchesSearch && matchesCategory && matchesStock;
+  });
+
+  if (filtered.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:30px;">No inventory records match filters.</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(p => {
+    const tr = document.createElement("tr");
+    
+    let badgeClass = "badge-success";
+    let statusText = "In Stock";
+    if (p.stock <= 0) {
+      badgeClass = "badge-danger";
+      statusText = "Out of Stock";
+    } else if (p.stock <= p.reorderLevel) {
+      badgeClass = "badge-warning";
+      statusText = "Low Stock";
+    }
+
+    tr.innerHTML = `
+      <td><span class="sku-text">${p.sku}</span></td>
+      <td><span class="product-name-cell">${p.name}</span></td>
+      <td>${p.category}</td>
+      <td><span class="sku-text">${p.hsn || '-'}</span></td>
+      <td>${formatRupee(p.costPrice)}</td>
+      <td>${formatRupee(p.sellingPrice)}</td>
+      <td>${p.gstSlab}%</td>
+      <td>${p.discountPercent || 0}%</td>
+      <td><strong>${p.stock} ${p.unit}</strong></td>
+      <td><span class="badge ${badgeClass}">${statusText}</span></td>
+      <td>
+        <div class="action-buttons">
+          <button class="btn-icon-only" onclick="editProduct('${p.sku}')" title="Edit Product">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </button>
+          <button class="btn-icon-only" onclick="deleteProduct('${p.sku}')" title="Delete Product">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </button>
+        </div>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+}
+
+function saveProductForm() {
+  const editSku = document.getElementById("prod-edit-id").value;
+  const sku = document.getElementById("prod-sku").value.trim();
+  const hsn = document.getElementById("prod-hsn").value.trim();
+  const name = document.getElementById("prod-name").value.trim();
+  const category = document.getElementById("prod-category").value;
+  const unit = document.getElementById("prod-unit").value;
+  const costPrice = parseFloat(document.getElementById("prod-cost").value);
+  const sellingPrice = parseFloat(document.getElementById("prod-price").value);
+  const gstSlab = parseInt(document.getElementById("prod-gst").value);
+  const stock = parseInt(document.getElementById("prod-stock").value);
+  const reorderLevel = parseInt(document.getElementById("prod-reorder").value);
+  const discountPercent = parseInt(document.getElementById("prod-discount").value) || 0;
+
+  if (editSku) {
+    // Edit existing product
+    const index = state.products.findIndex(p => p.sku === editSku);
+    if (index !== -1) {
+      state.products[index] = {
+        sku: editSku, // keep original SKU
+        name, hsn, category, unit, costPrice, sellingPrice, gstSlab, stock, reorderLevel, discountPercent
+      };
+    }
+  } else {
+    // Check duplication
+    const duplicate = state.products.find(p => p.sku === sku);
+    if (duplicate) {
+      alert("A product with this Barcode/SKU already exists in inventory.");
+      return;
+    }
+    // Add new product
+    state.products.push({
+      sku, name, hsn, category, unit, costPrice, sellingPrice, gstSlab, stock, reorderLevel, discountPercent
+    });
+  }
+
+  saveProductsToStorage();
+  document.getElementById("product-modal").classList.remove("active");
+  renderAll();
+}
+
+// Global functions for inline table buttons
+window.editProduct = function(sku) {
+  const prod = state.products.find(p => p.sku === sku);
+  if (!prod) return;
+
+  document.getElementById("product-modal-title").innerText = "Edit Product Details";
+  document.getElementById("prod-edit-id").value = prod.sku;
+  
+  // Fill inputs
+  document.getElementById("prod-sku").value = prod.sku;
+  document.getElementById("prod-sku").disabled = true; // prevent editing barcode SKU directly
+  document.getElementById("prod-hsn").value = prod.hsn || "";
+  document.getElementById("prod-name").value = prod.name;
+  document.getElementById("prod-category").value = prod.category;
+  document.getElementById("prod-unit").value = prod.unit;
+  document.getElementById("prod-cost").value = prod.costPrice;
+  document.getElementById("prod-price").value = prod.sellingPrice;
+  document.getElementById("prod-gst").value = prod.gstSlab;
+  document.getElementById("prod-stock").value = prod.stock;
+  document.getElementById("prod-reorder").value = prod.reorderLevel;
+  document.getElementById("prod-discount").value = prod.discountPercent || 0;
+
+  document.getElementById("product-modal").classList.add("active");
+};
+
+window.deleteProduct = function(sku) {
+  if (confirm(`Are you sure you want to delete product SKU: ${sku} from inventory?`)) {
+    state.products = state.products.filter(p => p.sku !== sku);
+    saveProductsToStorage();
+    renderAll();
+  }
+};
+
+// ----------------------------------------------------
+// VIEW 4: TRANSACTIONS HISTORICAL LEDGER
+// ----------------------------------------------------
+let txnSearchQuery = "";
+
+function setupTransactionsLedger() {
+  document.getElementById("txn-search-input").addEventListener("input", (e) => {
+    txnSearchQuery = e.target.value;
+    renderTransactions();
+  });
+}
+
+function renderTransactions() {
+  const tableBody = document.getElementById("txn-table-body");
+  if (!tableBody) return;
+  tableBody.innerHTML = "";
+
+  const filtered = state.transactions.filter(t => {
+    return t.id.includes(txnSearchQuery) ||
+           t.customerName.toLowerCase().includes(txnSearchQuery.toLowerCase()) ||
+           t.customerPhone.includes(txnSearchQuery);
+  });
+
+  // Sort descending by date
+  const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (sorted.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:30px;">No transactions recorded yet.</td></tr>`;
+    return;
+  }
+
+  sorted.forEach(t => {
+    const tr = document.createElement("tr");
+    
+    // Count total items
+    const itemCount = t.items.reduce((acc, curr) => acc + curr.quantity, 0);
+
+    tr.innerHTML = `
+      <td>${formatDate(t.date)}</td>
+      <td><strong>${t.id}</strong></td>
+      <td>
+        <div>${t.customerName}</div>
+        <div style="font-size:11px; color:var(--text-muted);">${t.customerPhone || 'Walk-in'}</div>
+      </td>
+      <td>${itemCount} items</td>
+      <td>${formatRupee(t.subtotal)}</td>
+      <td>${formatRupee(t.discountAmount)}</td>
+      <td>${formatRupee(t.gstAmount)}</td>
+      <td><strong style="color:var(--primary);">${formatRupee(t.totalPayable)}</strong></td>
+      <td><span class="badge badge-info">${t.paymentMethod}</span></td>
+      <td>
+        <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="viewPastInvoice('${t.id}')">View Invoice</button>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+}
+
+window.viewPastInvoice = function(txnId) {
+  const txn = state.transactions.find(t => t.id === txnId);
+  if (!txn) return;
+
+  buildReceiptInvoice(txn);
+  document.getElementById("receipt-invoice-id").innerText = `Invoice No: ${txnId}`;
+  document.getElementById("receipt-modal").classList.add("active");
+};
+
+// ----------------------------------------------------
+// CSV CATALOG BULK IMPORT & EXPORT ENGINE
+// ----------------------------------------------------
+function setupCSVImportExport() {
+  const importModal = document.getElementById("csv-import-modal");
+  const fileInput = document.getElementById("csv-file-input");
+  const dropZone = document.getElementById("csv-drop-zone");
+  const importSubmitBtn = document.getElementById("csv-modal-submit-btn");
+  const fileInfo = document.getElementById("csv-file-info");
+
+  // Show Modal trigger
+  document.getElementById("inv-import-modal-btn").addEventListener("click", () => {
+    fileInfo.style.display = "none";
+    fileInput.value = "";
+    importSubmitBtn.disabled = true;
+    importModal.classList.add("active");
+  });
+
+  // Modal Cancel Close
+  document.getElementById("csv-modal-close-btn").addEventListener("click", () => importModal.classList.remove("active"));
+  document.getElementById("csv-modal-cancel-btn").addEventListener("click", () => importModal.classList.remove("active"));
+
+  // Download template CSV file
+  document.getElementById("csv-download-template-btn").addEventListener("click", () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "SKU_Barcode,Product_Name,Category,HSN,Cost_Price,Selling_Price,GST_Slab_Percent,Discount_Percent,Stock_Quantity,Reorder_Limit,Unit\n"
+      + "8901030753007,Amul Butter 500g,Dairy,0405,240,275,12,0,50,10,pcs\n"
+      + "8901499009132,Tata Salt 1kg,Pantry,2501,22,28,0,0,100,15,pcs\n"
+      + "1001,Fresh Onion,Produce,0703,26,35,0,0,150,20,kg";
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "gulati_store_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  // CSV Drag/Drop events
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = "var(--primary)";
+  });
+
+  dropZone.addEventListener("dragleave", () => {
+    dropZone.style.borderColor = "var(--border-color)";
+  });
+
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = "var(--border-color)";
+    if (e.dataTransfer.files.length > 0) {
+      fileInput.files = e.dataTransfer.files;
+      handleFileSelected();
+    }
+  });
+
+  fileInput.addEventListener("change", handleFileSelected);
+
+  function handleFileSelected() {
+    const file = fileInput.files[0];
+    if (file && file.name.endsWith(".csv")) {
+      fileInfo.style.display = "block";
+      fileInfo.innerText = `Selected File: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+      importSubmitBtn.disabled = false;
+    } else {
+      alert("Invalid format. Please upload a .csv file.");
+      fileInput.value = "";
+      importSubmitBtn.disabled = true;
+      fileInfo.style.display = "none";
+    }
+  }
+
+  // Parse CSV and merge/load into local state
+  importSubmitBtn.addEventListener("click", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      processCSVText(text);
+    };
+    reader.readAsText(file);
+  });
+
+  // Export current catalog as CSV file
+  document.getElementById("inv-export-csv-btn").addEventListener("click", () => {
+    let csvString = "SKU_Barcode,Product_Name,Category,HSN,Cost_Price,Selling_Price,GST_Slab_Percent,Discount_Percent,Stock_Quantity,Reorder_Limit,Unit\n";
+    
+    state.products.forEach(p => {
+      csvString += `"${p.sku}","${p.name.replace(/"/g, '""')}","${p.category}","${p.hsn || ''}",${p.costPrice},${p.sellingPrice},${p.gstSlab},${p.discountPercent || 0},${p.stock},${p.reorderLevel},"${p.unit}"\n`;
+    });
+
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `gulati_store_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+}
+
+function processCSVText(text) {
+  const lines = text.split(/\r?\n/);
+  if (lines.length <= 1) {
+    alert("Empty CSV file.");
+    return;
+  }
+
+  // Header indices matching
+  // SKU_Barcode,Product_Name,Category,HSN,Cost_Price,Selling_Price,GST_Slab_Percent,Stock_Quantity,Reorder_Limit,Unit
+  const headers = lines[0].split(",");
+  
+  let importCount = 0;
+  let errorCount = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue; // skip empty rows
+
+    // regex split to correctly handle comma inside quotes
+    const fields = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+    
+    if (fields.length < 6) {
+      errorCount++;
+      continue;
+    }
+
+    // Clean quotes
+    const clean = str => str ? str.replace(/^["']|["']$/g, '').trim() : '';
+
+    const sku = clean(fields[0]);
+    const name = clean(fields[1]);
+    const category = clean(fields[2]) || "Pantry";
+    const hsn = clean(fields[3]) || "";
+    const costPrice = parseFloat(clean(fields[4])) || 0;
+    const sellingPrice = parseFloat(clean(fields[5])) || 0;
+    const gstSlab = parseInt(clean(fields[6])) || 0;
+    const discountPercent = parseInt(clean(fields[7])) || 0;
+    const stock = parseInt(clean(fields[8])) || 0;
+    const reorderLevel = parseInt(clean(fields[9])) || 5;
+    const unit = clean(fields[10]) || "pcs";
+
+    if (!sku || !name) {
+      errorCount++;
+      continue;
+    }
+
+    // Update product if SKU matches, otherwise append
+    const existingIndex = state.products.findIndex(p => p.sku === sku);
+    const newProd = { sku, name, category, hsn, costPrice, sellingPrice, gstSlab, discountPercent, stock, reorderLevel, unit };
+
+    if (existingIndex !== -1) {
+      state.products[existingIndex] = newProd;
+    } else {
+      state.products.push(newProd);
+    }
+    importCount++;
+  }
+
+  saveProductsToStorage();
+  document.getElementById("csv-import-modal").classList.remove("active");
+  renderAll();
+
+  alert(`Bulk Import Finished!\nSuccessfully imported/updated: ${importCount} products.\nFailed: ${errorCount} rows.`);
+}
+
+// ----------------------------------------------------
+// VIEW 5: CUSTOMER LEDGER (KHATA BOOK)
+// ----------------------------------------------------
+let ledgerSearchQuery = "";
+
+function renderLedger() {
+  const tableBody = document.getElementById("ledger-table-body");
+  if (!tableBody) return;
+  tableBody.innerHTML = "";
+
+  // Calculate aggregate stats
+  const totalOutstanding = state.customers.reduce((acc, curr) => acc + curr.balance, 0);
+  const activeDebtors = state.customers.filter(c => c.balance > 0).length;
+
+  document.getElementById("stat-total-dues").innerText = formatRupee(totalOutstanding);
+  document.getElementById("stat-active-debtors").innerText = activeDebtors;
+
+  // Filter list
+  const filtered = state.customers.filter(c => {
+    return c.name.toLowerCase().includes(ledgerSearchQuery.toLowerCase()) ||
+           c.phone.includes(ledgerSearchQuery);
+  });
+
+  if (filtered.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:30px;">No customer ledger accounts found.</td></tr>`;
+    return;
+  }
+
+  // Sort by balance outstanding descending
+  const sorted = [...filtered].sort((a, b) => b.balance - a.balance);
+
+    sorted.forEach(cust => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${cust.name}</strong></td>
+        <td><span class="sku-text">${cust.phone}</span></td>
+        <td>${formatRupee(cust.totalPurchased)}</td>
+        <td style="font-weight:700; color:${cust.balance > 0 ? 'var(--danger)' : 'var(--success)'};">${formatRupee(cust.balance)}</td>
+        <td>${cust.lastTxn ? cust.lastTxn : '-'}</td>
+        <td>
+          <div class="action-buttons">
+            <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="viewLedgerStatement('${cust.phone}')">Statement</button>
+            <button class="btn btn-primary" style="padding:4px 10px; font-size:12px; background-color:var(--success); border-color:var(--success);" onclick="openPayDuesModal('${cust.phone}')">Record Payment</button>
+            <button class="btn btn-primary" style="padding:4px 10px; font-size:12px; background-color:var(--danger); border-color:var(--danger);" onclick="openAdjustDuesModal('${cust.phone}')">Adjust Dues</button>
+          </div>
+        </td>
+      `;
+      tableBody.appendChild(tr);
+    });
+}
+
+// Hook up search filter
+document.getElementById("ledger-search-input").addEventListener("input", (e) => {
+  ledgerSearchQuery = e.target.value;
+  renderLedger();
+});
+
+// Ledger Statement modal functions
+// Ledger Statement modal functions
+window.viewLedgerStatement = function(phone) {
+  const cust = state.customers.find(c => c.phone === phone);
+  if (!cust) return;
+
+  state.activeStatementPhone = phone;
+
+  document.getElementById("statement-title").innerText = `${cust.name} - Ledger Statement`;
+  document.getElementById("statement-subtitle").innerText = `Phone: ${cust.phone} | Outstanding Dues: ${formatRupee(cust.balance)}`;
+
+  // Reset filters to default
+  const periodSelector = document.getElementById("statement-period");
+  const customDates = document.getElementById("statement-custom-dates");
+  if (periodSelector) periodSelector.value = "all";
+  if (customDates) customDates.style.display = "none";
+
+  filterAndRenderStatement();
+
+  document.getElementById("ledger-statement-modal").classList.add("active");
+};
+
+function filterAndRenderStatement() {
+  const phone = state.activeStatementPhone;
+  const cust = state.customers.find(c => c.phone === phone);
+  if (!cust) return;
+
+  const period = document.getElementById("statement-period").value;
+  let start = null;
+  let end = null;
+
+  if (period === '30days') {
+    start = new Date();
+    start.setDate(start.getDate() - 30);
+    start.setHours(0, 0, 0, 0);
+    end = new Date();
+    end.setHours(23, 59, 59, 999);
+  } else if (period === 'current-month') {
+    start = new Date();
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    end = new Date();
+    end.setHours(23, 59, 59, 999);
+  } else if (period === 'year') {
+    start = new Date();
+    start.setFullYear(start.getFullYear() - 1);
+    start.setHours(0, 0, 0, 0);
+    end = new Date();
+    end.setHours(23, 59, 59, 999);
+  } else if (period === 'custom') {
+    const startVal = document.getElementById("statement-start-date").value;
+    const endVal = document.getElementById("statement-end-date").value;
+    if (startVal) start = new Date(startVal + "T00:00:00");
+    if (endVal) end = new Date(endVal + "T23:59:59");
+  }
+
+  // Get and sort all customer entries
+  const allCustEntries = state.ledgerEntries.filter(e => e.phone === phone)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const renderedEntries = [];
+  let broughtForwardBalance = 0;
+  let runningBalance = 0;
+
+  allCustEntries.forEach(entry => {
+    const entryDate = new Date(entry.date);
+    const isBeforeStart = start && entryDate < start;
+    const isAfterEnd = end && entryDate > end;
+
+    if (entry.type === 'debit') {
+      runningBalance += entry.amount;
+    } else {
+      runningBalance -= entry.amount;
+    }
+
+    if (isBeforeStart) {
+      broughtForwardBalance = runningBalance;
+    } else if (!isAfterEnd) {
+      renderedEntries.push({
+        ...entry,
+        runningBalAfter: runningBalance
+      });
+    }
+  });
+
+  const statementBody = document.getElementById("statement-table-body");
+  statementBody.innerHTML = "";
+
+  // Render brought forward balance if date filter is active and balance !== 0
+  if (start && broughtForwardBalance !== 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${start.toLocaleDateString('en-IN')}</td>
+      <td><strong>Balance Brought Forward (BF)</strong></td>
+      <td style="color:var(--danger);">${broughtForwardBalance > 0 ? '+' + formatRupee(broughtForwardBalance) : '-'}</td>
+      <td style="color:var(--success);">${broughtForwardBalance < 0 ? '-' + formatRupee(Math.abs(broughtForwardBalance)) : '-'}</td>
+      <td style="font-weight:700; color:${broughtForwardBalance > 0 ? 'var(--danger)' : 'var(--success)'};">${formatRupee(broughtForwardBalance)}</td>
+    `;
+    statementBody.appendChild(tr);
+  }
+
+  if (renderedEntries.length === 0 && broughtForwardBalance === 0) {
+    statementBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:20px;">No transaction entries found for this period.</td></tr>`;
+  } else {
+    renderedEntries.forEach(entry => {
+      const tr = document.createElement("tr");
+      const isInvoice = entry.ref.startsWith("TXN-");
+      const isStdPayment = ["Cash", "UPI", "Card", "Wallet"].includes(entry.ref);
+      let detailsText = "";
+      
+      if (entry.ref === "Opening Balance") {
+        detailsText = "Opening Balance / Previous Dues";
+      } else if (!isInvoice && !isStdPayment) {
+        detailsText = entry.type === 'debit' 
+          ? `Balance Increase (Ref: ${entry.ref})` 
+          : `Balance Decrease (Ref: ${entry.ref})`;
+      } else {
+        detailsText = entry.type === 'debit' 
+          ? `Credit Purchase (Ref: ${entry.ref})` 
+          : `Payment Received (${entry.ref})`;
+      }
+      
+      tr.innerHTML = `
+        <td>${formatDate(entry.date)}</td>
+        <td><strong>${detailsText}</strong></td>
+        <td style="color:var(--danger);">${entry.type === 'debit' ? '+' + formatRupee(entry.amount) : '-'}</td>
+        <td style="color:var(--success);">${entry.type === 'credit' ? '-' + formatRupee(entry.amount) : '-'}</td>
+        <td style="font-weight:700; color:${entry.runningBalAfter > 0 ? 'var(--danger)' : 'var(--success)'};">${formatRupee(entry.runningBalAfter)}</td>
+      `;
+      statementBody.appendChild(tr);
+    });
+  }
+
+  // Print button listener (respects period range and BF calculations)
+  document.getElementById("statement-print-btn").onclick = function() {
+    const receiptArea = document.getElementById("receipt-print-area");
+    if (!receiptArea) return;
+
+    let rows = "";
+    
+    // BF Row print
+    if (start && broughtForwardBalance !== 0) {
+      rows += `
+        <tr>
+          <td style="font-size:11px;">${start.toLocaleDateString('en-IN')}</td>
+          <td style="font-size:11px;">BAL BROUGHT FORWARD (BF)</td>
+          <td style="font-size:11px; text-align:right;">${broughtForwardBalance > 0 ? '₹' + broughtForwardBalance.toFixed(2) : '-'}</td>
+          <td style="font-size:11px; text-align:right;">${broughtForwardBalance < 0 ? '₹' + Math.abs(broughtForwardBalance).toFixed(2) : '-'}</td>
+          <td style="font-size:11px; text-align:right; font-weight:700;">${broughtForwardBalance < 0 ? '-' : ''}₹${Math.abs(broughtForwardBalance).toFixed(2)}</td>
+        </tr>
+      `;
+    }
+
+    renderedEntries.forEach(e => {
+      const isInv = e.ref.startsWith("TXN-");
+      const isPay = ["Cash", "UPI", "Card", "Wallet"].includes(e.ref);
+      let printDetails = "";
+      
+      if (e.ref === 'Opening Balance') {
+        printDetails = 'OPENING BALANCE';
+      } else if (!isInv && !isPay) {
+        printDetails = e.type === 'debit' 
+          ? `BAL INCREASE (${e.ref.toUpperCase()})` 
+          : `BAL DECREASE (${e.ref.toUpperCase()})`;
+      } else {
+        printDetails = e.type === 'debit' 
+          ? `PURCHASE (${e.ref})` 
+          : `PAYMENT (${e.ref})`;
+      }
+      
+      rows += `
+        <tr>
+          <td style="font-size:11px;">${new Date(e.date).toLocaleDateString('en-IN')}</td>
+          <td style="font-size:11px;">${printDetails}</td>
+          <td style="font-size:11px; text-align:right;">${e.type === 'debit' ? '₹' + e.amount.toFixed(2) : '-'}</td>
+          <td style="font-size:11px; text-align:right;">${e.type === 'credit' ? '₹' + e.amount.toFixed(2) : '-'}</td>
+          <td style="font-size:11px; text-align:right; font-weight:700;">${e.runningBalAfter < 0 ? '-' : ''}₹${Math.abs(e.runningBalAfter).toFixed(2)}</td>
+        </tr>
+      `;
+    });
+
+    // Subtitle text to reflect period limit
+    let periodText = "ALL TIME STATEMENT";
+    if (start && end) {
+      periodText = `PERIOD: ${start.toLocaleDateString('en-IN')} TO ${end.toLocaleDateString('en-IN')}`;
+    } else if (start) {
+      periodText = `SINCE ${start.toLocaleDateString('en-IN')}`;
+    }
+
+    receiptArea.innerHTML = `
+      <div class="receipt-header">
+        <div class="receipt-store-title">GULATI STORE</div>
+        <div style="font-size:11px; color:#4B5563;">${periodText}</div>
+        <div style="font-size:12px; font-weight:700; margin-top:6px;">${cust.name.toUpperCase()}</div>
+        <div style="font-size:11px; color:#4B5563;">Mobile: ${cust.phone}</div>
+      </div>
+      <table class="receipt-table" style="font-size:11px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;">Date</th>
+            <th style="text-align:left;">Details</th>
+            <th style="text-align:right;">Debit (+)</th>
+            <th style="text-align:right;">Credit (-)</th>
+            <th style="text-align:right;">Bal Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+      <div class="receipt-summary" style="border-top:1px solid #111827; padding-top:8px;">
+        <div class="receipt-row bold">
+          <span>NET OUTSTANDING BALANCE:</span>
+          <span>${cust.balance < 0 ? '-' : ''}₹${Math.abs(cust.balance).toFixed(2)}</span>
+        </div>
+      </div>
+      <div class="receipt-footer" style="margin-top:16px;">
+        <p>Generated on ${new Date().toLocaleDateString('en-IN')}</p>
+        <p>Gulati Store Khata System</p>
+      </div>
+    `;
+
+    window.print();
+  };
+
+  // Download Statement button listener
+  document.getElementById("statement-download-btn").onclick = function() {
+    if (typeof window.jspdf === "undefined" || typeof window.jspdf.jsPDF === "undefined") {
+      alert("PDF generation library is loading or unavailable. Please check your internet connection.");
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4"
+    });
+
+    let periodText = "ALL TIME STATEMENT";
+    if (start && end) {
+      periodText = `PERIOD: ${start.toLocaleDateString('en-IN')} TO ${end.toLocaleDateString('en-IN')}`;
+    } else if (start) {
+      periodText = `SINCE ${start.toLocaleDateString('en-IN')}`;
+    }
+
+    const cleanName = cust.name.replace(/\s+/g, '_');
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Styling configurations
+    doc.setFont("helvetica", "normal");
+    
+    // Header
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(17, 24, 39); // Dark Gray
+    doc.text("GULATI STORE", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(75, 85, 99); // Medium Gray
+    doc.text("Customer Ledger Statement", 14, 26);
+    doc.text(periodText, 14, 32);
+    
+    // Divider
+    doc.setDrawColor(209, 213, 219); // border-color
+    doc.line(14, 36, 196, 36);
+    
+    // Customer Info
+    doc.setFontSize(11);
+    doc.setTextColor(17, 24, 39);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Customer: ${cust.name.toUpperCase()}`, 14, 45);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(75, 85, 99);
+    doc.text(`Mobile: ${cust.phone}`, 14, 51);
+    doc.text(`Date Generated: ${new Date().toLocaleDateString('en-IN')}`, 14, 57);
+    
+    // Table Headers
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(17, 24, 39);
+    doc.setFillColor(243, 244, 246); // gray-100 background
+    doc.rect(14, 65, 182, 8, "F");
+    doc.text("Date", 16, 70);
+    doc.text("Details", 40, 70);
+    doc.text("Debit (+)", 115, 70, { align: "right" });
+    doc.text("Credit (-)", 150, 70, { align: "right" });
+    doc.text("Balance Due", 192, 70, { align: "right" });
+    
+    // Draw table rows
+    let y = 80;
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(55, 65, 81); // gray-700
+    
+    // BF Row print
+    if (start && broughtForwardBalance !== 0) {
+      doc.text(start.toLocaleDateString('en-IN'), 16, y);
+      doc.setFont("helvetica", "bold");
+      doc.text("BAL BROUGHT FORWARD (BF)", 40, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(broughtForwardBalance > 0 ? `₹${broughtForwardBalance.toFixed(2)}` : "-", 115, y, { align: "right" });
+      doc.text(broughtForwardBalance < 0 ? `₹${Math.abs(broughtForwardBalance).toFixed(2)}` : "-", 150, y, { align: "right" });
+      doc.text(`₹${broughtForwardBalance.toFixed(2)}`, 192, y, { align: "right" });
+      y += 8;
+    }
+
+    renderedEntries.forEach(e => {
+      // Check page overflow
+      if (y > 270) {
+        doc.addPage();
+        y = 25;
+        // repeat headers on new page
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(17, 24, 39);
+        doc.setFillColor(243, 244, 246);
+        doc.rect(14, y - 5, 182, 8, "F");
+        doc.text("Date", 16, y);
+        doc.text("Details", 40, y);
+        doc.text("Debit (+)", 115, y, { align: "right" });
+        doc.text("Credit (-)", 150, y, { align: "right" });
+        doc.text("Balance Due", 192, y, { align: "right" });
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(55, 65, 81);
+        y += 10;
+      }
+
+      const isInv = e.ref.startsWith("TXN-");
+      const isPay = ["Cash", "UPI", "Card", "Wallet"].includes(e.ref);
+      let printDetails = "";
+      
+      if (e.ref === 'Opening Balance') {
+        printDetails = 'Opening Balance';
+      } else if (!isInv && !isPay) {
+        printDetails = e.type === 'debit' 
+          ? `Bal Increase (${e.ref})` 
+          : `Bal Decrease (${e.ref})`;
+      } else {
+        printDetails = e.type === 'debit' 
+          ? `Purchase (${e.ref})` 
+          : `Payment (${e.ref})`;
+      }
+
+      // Truncate details if too long to prevent row overlap
+      if (printDetails.length > 32) {
+        printDetails = printDetails.substring(0, 29) + "...";
+      }
+
+      doc.text(new Date(e.date).toLocaleDateString('en-IN'), 16, y);
+      doc.text(printDetails, 40, y);
+      doc.text(e.type === 'debit' ? `₹${e.amount.toFixed(2)}` : "-", 115, y, { align: "right" });
+      doc.text(e.type === 'credit' ? `₹${e.amount.toFixed(2)}` : "-", 150, y, { align: "right" });
+      doc.text(`${e.runningBalAfter < 0 ? '-' : ''}₹${Math.abs(e.runningBalAfter).toFixed(2)}`, 192, y, { align: "right" });
+      y += 8;
+    });
+
+    // Divider
+    doc.setDrawColor(17, 24, 39);
+    doc.line(14, y, 196, y);
+    y += 8;
+    
+    // Net balance
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(17, 24, 39);
+    doc.text("NET OUTSTANDING BALANCE:", 14, y);
+    doc.text(`${cust.balance < 0 ? '-' : ''}₹${Math.abs(cust.balance).toFixed(2)}`, 192, y, { align: "right" });
+    
+    // Footer
+    y += 12;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(156, 163, 175); // gray-400
+    doc.text("Thank you for choosing Gulati Store Khata System.", 14, y);
+    
+    // Save PDF file locally
+    doc.save(`Statement_${cleanName}_${todayStr}.pdf`);
+  };
+}
+
+// Hook up Close Statement modal actions
+document.getElementById("statement-modal-close-btn").addEventListener("click", () => {
+  document.getElementById("ledger-statement-modal").classList.remove("active");
+});
+document.getElementById("statement-modal-close-btn-bottom").addEventListener("click", () => {
+  document.getElementById("ledger-statement-modal").classList.remove("active");
+});
+
+// Record Payments modal functions
+window.openPayDuesModal = function(phone) {
+  const cust = state.customers.find(c => c.phone === phone);
+  if (!cust) return;
+
+  document.getElementById("payment-cust-phone").value = cust.phone;
+  document.getElementById("payment-cust-name").value = cust.name;
+  document.getElementById("payment-current-balance").value = formatRupee(cust.balance);
+  document.getElementById("payment-amount").value = "";
+
+  document.getElementById("payment-modal").classList.add("active");
+};
+
+// Modal Cancel/Close click
+document.getElementById("payment-modal-close-btn").addEventListener("click", () => {
+  document.getElementById("payment-modal").classList.remove("active");
+});
+document.getElementById("payment-modal-cancel-btn").addEventListener("click", () => {
+  document.getElementById("payment-modal").classList.remove("active");
+});
+
+// Log payment submit handler
+document.getElementById("ledger-payment-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const phone = document.getElementById("payment-cust-phone").value;
+  const amountPaid = parseFloat(document.getElementById("payment-amount").value);
+  const method = document.getElementById("payment-method").value;
+
+  if (isNaN(amountPaid) || amountPaid <= 0) {
+    alert("Please enter a valid payment amount.");
+    return;
+  }
+
+  const cust = state.customers.find(c => c.phone === phone);
+  if (cust) {
+    // Deduct balance (allows negative balance if they pre-pay / pay more than dues)
+    cust.balance = cust.balance - amountPaid;
+    cust.lastTxn = new Date().toISOString().split('T')[0];
+
+    // Log payment credit entry
+    state.ledgerEntries.push({
+      date: new Date().toISOString(),
+      phone: phone,
+      type: "credit",
+      amount: amountPaid,
+      ref: method
+    });
+
+    saveCustomersToStorage();
+    saveLedgerToStorage();
+
+    document.getElementById("payment-modal").classList.remove("active");
+    renderLedger();
+  }
+});
+
+function updatePOSCustomerDatalists() {
+  const namesList = document.getElementById("pos-customer-names-list");
+  const phonesList = document.getElementById("pos-customer-phones-list");
+  if (!namesList || !phonesList) return;
+
+  namesList.innerHTML = "";
+  phonesList.innerHTML = "";
+
+  state.customers.forEach(cust => {
+    const nameOpt = document.createElement("option");
+    nameOpt.value = cust.name;
+    namesList.appendChild(nameOpt);
+
+    const phoneOpt = document.createElement("option");
+    phoneOpt.value = cust.phone;
+    phonesList.appendChild(phoneOpt);
+  });
+}
+
+function setupCustomerLedgerActions() {
+  const addModal = document.getElementById("add-customer-modal");
+  const addBtn = document.getElementById("ledger-add-customer-btn");
+  const closeBtn = document.getElementById("add-cust-modal-close-btn");
+  const cancelBtn = document.getElementById("add-cust-modal-cancel-btn");
+  const form = document.getElementById("add-customer-form");
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      form.reset();
+      addModal.classList.add("active");
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => addModal.classList.remove("active"));
+  }
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => addModal.classList.remove("active"));
+  }
+
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      
+      const name = document.getElementById("cust-new-name").value.trim();
+      const phone = document.getElementById("cust-new-phone").value.trim();
+      const dues = parseFloat(document.getElementById("cust-new-dues").value) || 0;
+
+      if (!name || !phone || !/^\d{10}$/.test(phone)) {
+        alert("Please enter a valid Customer Name and 10-digit Indian Mobile Number.");
+        return;
+      }
+
+      // Check duplication
+      const existing = state.customers.find(c => c.phone === phone);
+      if (existing) {
+        alert(`A customer account with phone number ${phone} already exists (Name: ${existing.name}).`);
+        return;
+      }
+
+      // Create new customer
+      const newCust = {
+        name: name,
+        phone: phone,
+        totalPurchased: dues > 0 ? dues : 0,
+        balance: dues,
+        lastTxn: dues !== 0 ? new Date().toISOString().split('T')[0] : ""
+      };
+
+      state.customers.push(newCust);
+      saveCustomersToStorage();
+
+      // If opening dues !== 0, log an opening balance entry
+      if (dues !== 0) {
+        state.ledgerEntries.push({
+          date: new Date().toISOString(),
+          phone: phone,
+          type: dues > 0 ? "debit" : "credit",
+          amount: Math.abs(dues),
+          ref: "Opening Balance"
+        });
+        saveLedgerToStorage();
+      }
+
+      addModal.classList.remove("active");
+      renderLedger();
+      updatePOSCustomerDatalists(); // keep POS dropdowns updated
+    });
+  }
+
+  // Adjust Dues Modal Close/Cancel
+  const adjustModal = document.getElementById("adjust-dues-modal");
+  const adjustCloseBtn = document.getElementById("adjust-dues-modal-close-btn");
+  const adjustCancelBtn = document.getElementById("adjust-dues-modal-cancel-btn");
+  const adjustForm = document.getElementById("adjust-dues-form");
+
+  if (adjustCloseBtn) {
+    adjustCloseBtn.addEventListener("click", () => adjustModal.classList.remove("active"));
+  }
+  if (adjustCancelBtn) {
+    adjustCancelBtn.addEventListener("click", () => adjustModal.classList.remove("active"));
+  }
+
+  if (adjustForm) {
+    adjustForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      const phone = document.getElementById("adjust-cust-phone").value;
+      const addedDues = parseFloat(document.getElementById("adjust-new-dues").value);
+      const reason = document.getElementById("adjust-reason").value.trim() || "Balance Adjustment";
+
+      if (isNaN(addedDues) || addedDues === 0) {
+        alert("Please enter a valid dues adjustment amount (non-zero).");
+        return;
+      }
+
+      const cust = state.customers.find(c => c.phone === phone);
+      if (cust) {
+        // Add inputted amount directly to current dues balance
+        cust.balance += addedDues;
+        cust.lastTxn = new Date().toISOString().split('T')[0];
+
+        // Log adjustment entry (positive addedDues is debit, negative is credit)
+        state.ledgerEntries.push({
+          date: new Date().toISOString(),
+          phone: phone,
+          type: addedDues > 0 ? "debit" : "credit",
+          amount: Math.abs(addedDues),
+          ref: reason
+        });
+
+        saveCustomersToStorage();
+        saveLedgerToStorage();
+
+        adjustModal.classList.remove("active");
+        renderLedger();
+      }
+    });
+  }
+
+  // Statement filters change listeners
+  const periodSelector = document.getElementById("statement-period");
+  const customDates = document.getElementById("statement-custom-dates");
+  const startDateInput = document.getElementById("statement-start-date");
+  const endDateInput = document.getElementById("statement-end-date");
+
+  if (periodSelector) {
+    periodSelector.addEventListener("change", (e) => {
+      if (e.target.value === 'custom') {
+        customDates.style.display = "flex";
+        // Seed default custom dates (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        startDateInput.value = thirtyDaysAgo.toISOString().split('T')[0];
+        endDateInput.value = new Date().toISOString().split('T')[0];
+      } else {
+        customDates.style.display = "none";
+      }
+      filterAndRenderStatement();
+    });
+  }
+
+  if (startDateInput) {
+    startDateInput.addEventListener("input", filterAndRenderStatement);
+  }
+  if (endDateInput) {
+    endDateInput.addEventListener("input", filterAndRenderStatement);
+  }
+}
+
+window.openAdjustDuesModal = function(phone) {
+  const cust = state.customers.find(c => c.phone === phone);
+  if (!cust) return;
+
+  document.getElementById("adjust-cust-phone").value = cust.phone;
+  document.getElementById("adjust-cust-name").value = cust.name;
+  document.getElementById("adjust-current-dues").value = formatRupee(cust.balance);
+  document.getElementById("adjust-new-dues").value = "";
+  document.getElementById("adjust-reason").value = "";
+
+  document.getElementById("adjust-dues-modal").classList.add("active");
+};
+
+// =======================================================
+// SECURITY PIN ENTRY & AUTHENTICATION HANDLERS
+// =======================================================
+let enteredPin = "";
+
+function getAuthHeaders() {
+  const token = localStorage.getItem('fc_session_token');
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+function showLoginScreen() {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) {
+    overlay.classList.add('login-overlay-active');
+  }
+}
+
+function hideLoginScreen() {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) {
+    overlay.classList.remove('login-overlay-active');
+  }
+}
+
+window.pressPinNumber = function(num) {
+  if (enteredPin.length >= 4) return;
+  enteredPin += num;
+  updatePinDisplay();
+  
+  if (enteredPin.length === 4) {
+    setTimeout(submitPin, 200);
+  }
+};
+
+window.clearPin = function() {
+  enteredPin = "";
+  updatePinDisplay();
+  hidePinError();
+};
+
+window.backspacePin = function() {
+  if (enteredPin.length > 0) {
+    enteredPin = enteredPin.slice(0, -1);
+    updatePinDisplay();
+    hidePinError();
+  }
+};
+
+function updatePinDisplay() {
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach((dot, idx) => {
+    if (idx < enteredPin.length) {
+      dot.classList.add('filled');
+    } else {
+      dot.classList.remove('filled');
+    }
+  });
+}
+
+function showPinError() {
+  const errMsg = document.getElementById('login-error-msg');
+  if (errMsg) errMsg.classList.add('show');
+  
+  const loginBox = document.querySelector('.login-box');
+  if (loginBox) {
+    loginBox.classList.add('shake-box');
+    setTimeout(() => {
+      loginBox.classList.remove('shake-box');
+    }, 400);
+  }
+}
+
+function hidePinError() {
+  const errMsg = document.getElementById('login-error-msg');
+  if (errMsg) errMsg.classList.remove('show');
+}
+
+async function submitPin() {
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ pin: enteredPin })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem('fc_session_token', data.token);
+      hideLoginScreen();
+      clearPin();
+      
+      // Retry loading the main application data
+      await initData();
+      renderAll();
+    } else {
+      showPinError();
+      clearPin();
+    }
+  } catch (err) {
+    console.error("Login request failed:", err);
+    alert("Could not connect to POS server for verification.");
+  }
+}
+
+// Keyboard listener for PIN entry
+document.addEventListener("keydown", (e) => {
+  const overlay = document.getElementById('login-overlay');
+  if (!overlay || !overlay.classList.contains('login-overlay-active')) {
+    return;
+  }
+  
+  if (e.key >= '0' && e.key <= '9') {
+    pressPinNumber(parseInt(e.key));
+  } else if (e.key === 'Backspace') {
+    backspacePin();
+  } else if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
+    clearPin();
+  }
+});
+
+// =======================================================
+// CHANGE PIN MODAL AND ACTION HANDLERS
+// =======================================================
+
+window.openChangePinModal = function() {
+  // Auto-collapse mobile menu when Change PIN is opened
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) sidebar.classList.remove("menu-open");
+
+  const modal = document.getElementById("change-pin-modal");
+  if (!modal) return;
+  
+  // Reset form inputs & messages
+  document.getElementById("pin-current").value = "";
+  document.getElementById("pin-new").value = "";
+  document.getElementById("pin-confirm").value = "";
+  document.getElementById("pin-otp").value = "";
+
+  // Populate printer inputs and reset statuses
+  document.getElementById("settings-printer-name").value = state.settings.printer_name || "Default";
+  document.getElementById("settings-auto-print").checked = state.settings.auto_print === "true";
+  document.getElementById("settings-gstin").value = state.settings.gstin || "07AAAAA1111A1Z1";
+  document.getElementById("printer-settings-status").style.display = "none";
+  
+  // Hide OTP container and Reset buttons to Step 1
+  document.getElementById("pin-otp-container").style.display = "none";
+  document.getElementById("pin-otp").required = false;
+  document.getElementById("change-pin-request-btn").style.display = "block";
+  document.getElementById("change-pin-submit-btn").style.display = "none";
+  
+  document.getElementById("change-pin-error").style.display = "none";
+  document.getElementById("change-pin-success").style.display = "none";
+  
+  modal.classList.add("active");
+};
+
+function closeChangePinModal() {
+  const modal = document.getElementById("change-pin-modal");
+  if (modal) {
+    modal.classList.remove("active");
+  }
+}
+
+// Attach event listeners for change-pin actions
+document.addEventListener("DOMContentLoaded", () => {
+  const closeBtn = document.getElementById("change-pin-close-btn");
+  const cancelBtn = document.getElementById("change-pin-cancel-btn");
+  const requestBtn = document.getElementById("change-pin-request-btn");
+  const form = document.getElementById("change-pin-form");
+
+  if (closeBtn) closeBtn.addEventListener("click", closeChangePinModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeChangePinModal);
+
+  // Step 1: Request OTP
+  if (requestBtn) {
+    requestBtn.addEventListener("click", async () => {
+      const oldPin = document.getElementById("pin-current").value;
+      const newPin = document.getElementById("pin-new").value;
+      const confirmPin = document.getElementById("pin-confirm").value;
+      const errorDiv = document.getElementById("change-pin-error");
+      const successDiv = document.getElementById("change-pin-success");
+
+      errorDiv.style.display = "none";
+      successDiv.style.display = "none";
+
+      if (!oldPin) {
+        errorDiv.textContent = "Please enter your current PIN.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      // Validations
+      if (!/^\d{4}$/.test(newPin)) {
+        errorDiv.textContent = "New PIN must be exactly 4 digits.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      if (newPin !== confirmPin) {
+        errorDiv.textContent = "New PIN and Confirmation PIN do not match.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/request-otp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ oldPin, newPin })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Transition to Step 2
+          document.getElementById("pin-otp-container").style.display = "block";
+          document.getElementById("pin-otp").required = true;
+          document.getElementById("change-pin-request-btn").style.display = "none";
+          document.getElementById("change-pin-submit-btn").style.display = "block";
+          document.getElementById("pin-otp").focus();
+        } else {
+          errorDiv.textContent = data.error || "Failed to request verification OTP.";
+          errorDiv.style.display = "block";
+        }
+      } catch (err) {
+        console.error("Failed to request OTP:", err);
+        errorDiv.textContent = "Could not connect to server.";
+        errorDiv.style.display = "block";
+      }
+    });
+  }
+
+  // Step 2: Submit OTP and Save
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const otp = document.getElementById("pin-otp").value;
+      const errorDiv = document.getElementById("change-pin-error");
+      const successDiv = document.getElementById("change-pin-success");
+
+      errorDiv.style.display = "none";
+      successDiv.style.display = "none";
+
+      if (!/^\d{6}$/.test(otp)) {
+        errorDiv.textContent = "OTP must be exactly 6 digits.";
+        errorDiv.style.display = "block";
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/verify-otp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ otp })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          successDiv.style.display = "block";
+          
+          // Clear inputs
+          document.getElementById("pin-current").value = "";
+          document.getElementById("pin-new").value = "";
+          document.getElementById("pin-confirm").value = "";
+          document.getElementById("pin-otp").value = "";
+          
+          // Close modal after a brief delay
+          setTimeout(closeChangePinModal, 1500);
+        } else {
+          errorDiv.textContent = data.error || "Incorrect OTP. Please check your laptop server screen.";
+          errorDiv.style.display = "block";
+        }
+      } catch (err) {
+        console.error("Failed to verify OTP:", err);
+        errorDiv.textContent = "Could not connect to server.";
+        errorDiv.style.display = "block";
+      }
+    });
+  }
+});
+
+// =======================================================
+// THERMAL PRINTER HELPER FUNCTIONS
+// =======================================================
+function setupStoreSettings() {
+  const savePrinterBtn = document.getElementById("settings-save-printer-btn");
+  if (savePrinterBtn) {
+    savePrinterBtn.addEventListener("click", async () => {
+      const printerName = document.getElementById("settings-printer-name").value.trim();
+      const autoPrint = document.getElementById("settings-auto-print").checked;
+      const gstin = document.getElementById("settings-gstin").value.trim().toUpperCase();
+      const statusDiv = document.getElementById("printer-settings-status");
+
+      statusDiv.style.display = "block";
+      statusDiv.style.color = "var(--text-secondary)";
+      statusDiv.innerText = "Saving settings...";
+
+      try {
+        const response = await fetch('/api/save-printer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ printerName, autoPrint, gstin })
+        });
+
+        if (response.ok) {
+          state.settings.printer_name = printerName || "Default";
+          state.settings.auto_print = autoPrint ? "true" : "false";
+          state.settings.gstin = gstin || "07AAAAA1111A1Z1";
+          
+          localStorage.setItem('fc_printer_name', state.settings.printer_name);
+          localStorage.setItem('fc_auto_print', state.settings.auto_print);
+          localStorage.setItem('fc_gstin', state.settings.gstin);
+
+          statusDiv.style.color = "var(--success)";
+          statusDiv.innerText = "Store settings saved successfully!";
+          
+          setTimeout(() => {
+            statusDiv.style.display = "none";
+          }, 3000);
+        } else {
+          const data = await response.json();
+          statusDiv.style.color = "var(--danger)";
+          statusDiv.innerText = data.error || "Failed to save settings.";
+        }
+      } catch (err) {
+        console.error("Error saving printer settings:", err);
+        statusDiv.style.color = "var(--danger)";
+        statusDiv.innerText = "Network error. Failed to connect to server.";
+      }
+    });
+  }
+
+  // Bind Direct Print Button from Success Receipt modal
+  const directPrintBtn = document.getElementById("receipt-direct-print-btn");
+  if (directPrintBtn) {
+    directPrintBtn.addEventListener("click", () => {
+      if (!state.lastTransaction) return;
+      const textReceipt = generateTextReceipt(state.lastTransaction);
+      sendReceiptToPrinter(textReceipt);
+    });
+  }
+}
+
+async function sendReceiptToPrinter(receiptText) {
+  const directPrintBtn = document.getElementById("receipt-direct-print-btn");
+  const originalText = directPrintBtn ? directPrintBtn.innerHTML : "Direct Print";
+  
+  if (directPrintBtn) {
+    directPrintBtn.disabled = true;
+    directPrintBtn.innerHTML = `Printing...`;
+  }
+
+  try {
+    const response = await fetch('/api/print', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ receiptText })
+    });
+    
+    if (response.ok) {
+      if (directPrintBtn) {
+        directPrintBtn.innerHTML = `Success!`;
+        directPrintBtn.classList.add("btn-success");
+        directPrintBtn.classList.remove("btn-warning");
+      }
+    } else {
+      const data = await response.json();
+      alert(`Printing failed: ${data.error || 'Check printer connection and name'}`);
+    }
+  } catch (err) {
+    console.error("Error printing receipt:", err);
+    alert("Network error: Could not contact local print server.");
+  } finally {
+    setTimeout(() => {
+      if (directPrintBtn) {
+        directPrintBtn.disabled = false;
+        directPrintBtn.innerHTML = originalText;
+        directPrintBtn.classList.remove("btn-success");
+        directPrintBtn.classList.add("btn-warning");
+      }
+    }, 2000);
+  }
+}
+
+function generateTextReceipt(txn) {
+  const line = "================================================";
+  const dash = "------------------------------------------------";
+  
+  function centerText(text, width = 48) {
+    const pad = Math.max(0, Math.floor((width - text.length) / 2));
+    return " ".repeat(pad) + text;
+  }
+
+  let r = "";
+  r += centerText("GULATI STORE") + "\n";
+  r += centerText("Shop No. 5 Sector 2 Naya Nangal") + "\n";
+  r += centerText("GSTIN: " + (state.settings.gstin || "07AAAAA1111A1Z1")) + "\n";
+  r += line + "\n";
+  r += `Date: ${new Date(txn.date).toLocaleString('en-IN')}\n`;
+  r += `Invoice No: ${txn.id}\n`;
+  if (txn.customerName && txn.customerName !== "Walk-in Customer") {
+    r += `Customer: ${txn.customerName}\n`;
+  }
+  if (txn.customerPhone) {
+    r += `Phone: ${txn.customerPhone}\n`;
+  }
+  r += dash + "\n";
+  r += "Item                 Qty      Rate       Total\n";
+  r += dash + "\n";
+  
+  txn.items.forEach(item => {
+    const name = item.name.substring(0, 20).padEnd(20);
+    const qty = item.quantity.toString().padStart(6);
+    const rate = item.sellingPrice.toFixed(2).padStart(10);
+    const total = (item.sellingPrice * item.quantity).toFixed(2).padStart(12);
+    r += `${name}${qty}${rate}${total}\n`;
+  });
+  
+  r += dash + "\n";
+  
+  r += "Subtotal (Excl. Tax):".padEnd(34) + formatRupeeText(txn.subtotal).padStart(14) + "\n";
+  r += "GST Amount (CGST+SGST):".padEnd(34) + formatRupeeText(txn.gstAmount).padStart(14) + "\n";
+  if (txn.discountAmount > 0) {
+    r += "Discount:".padEnd(34) + ("-" + formatRupeeText(txn.discountAmount)).padStart(14) + "\n";
+  }
+  r += line + "\n";
+  r += "GRAND TOTAL:".padEnd(30) + formatRupeeText(txn.totalPayable).padStart(18) + "\n";
+  r += line + "\n";
+  r += `Payment Method: ${txn.paymentMethod}\n`;
+  r += "\n            Thank You! Visit Again.\n\n\n\n\n\n\n\n\n";
+  r += "\u001d\u0056\u0001"; // ESC/POS Paper Cut Command (GS V 1)
+  return r;
+}
+
+function formatRupeeText(val) {
+  return "Rs." + parseFloat(val).toFixed(2);
+}
