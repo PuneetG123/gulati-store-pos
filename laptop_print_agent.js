@@ -4,8 +4,8 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 
-// Target Cloud Application URL (will be updated once Render app is deployed)
-const CLOUD_URL = process.env.CLOUD_URL || 'http://localhost:3000';
+// Target Cloud Application URL
+const CLOUD_URL = process.env.CLOUD_URL || 'https://gulati-store-pos.onrender.com';
 const POLL_INTERVAL_MS = 2000;
 
 console.log("=======================================================");
