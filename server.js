@@ -95,8 +95,8 @@ function createSqliteTables() {
       hsn TEXT,
       costPrice REAL,
       sellingPrice REAL,
-      gstSlab INTEGER,
-      discountPercent INTEGER DEFAULT 0,
+      gstSlab REAL,
+      discountPercent REAL DEFAULT 0,
       stock REAL,
       reorderLevel REAL,
       unit TEXT
@@ -125,8 +125,8 @@ function createSqliteTables() {
       lastTxn TEXT
     )`);
 
-    sqliteDb.run(`CREATE TABLE IF NOT EXISTS ledgerEntries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sqliteDb.run(`CREATE TABLE IF NOT EXISTS customer_ledger (
+      id TEXT PRIMARY KEY,
       date TEXT,
       phone TEXT,
       type TEXT,
@@ -152,14 +152,17 @@ async function createPostgresTables() {
   try {
     await pgPool.query(`
       CREATE TABLE IF NOT EXISTS products (
-        id TEXT PRIMARY KEY,
+        sku TEXT PRIMARY KEY,
         name TEXT,
         category TEXT,
-        "purchasePrice" REAL,
+        hsn TEXT,
+        "costPrice" REAL,
         "sellingPrice" REAL,
+        "gstSlab" REAL,
+        "discountPercent" REAL,
         stock REAL,
-        unit TEXT,
-        "gstRate" REAL
+        "reorderLevel" REAL,
+        unit TEXT
       );
 
       CREATE TABLE IF NOT EXISTS transactions (
@@ -168,8 +171,10 @@ async function createPostgresTables() {
         "customerName" TEXT,
         "customerPhone" TEXT,
         subtotal REAL,
-        "gstAmount" REAL,
+        "discountType" TEXT,
+        "discountValue" REAL,
         "discountAmount" REAL,
+        "gstAmount" REAL,
         "totalPayable" REAL,
         "paymentMethod" TEXT,
         items TEXT
@@ -178,8 +183,9 @@ async function createPostgresTables() {
       CREATE TABLE IF NOT EXISTS customers (
         phone TEXT PRIMARY KEY,
         name TEXT,
-        "totalPurchases" REAL,
-        balance REAL
+        "totalPurchased" REAL,
+        balance REAL,
+        "lastTxn" TEXT
       );
 
       CREATE TABLE IF NOT EXISTS customer_ledger (
@@ -307,11 +313,10 @@ app.post('/api/verify-otp', authenticateToken, async (req, res) => {
 app.get('/api/data', authenticateToken, async (req, res) => {
   try {
     const settings = await dbAll("SELECT * FROM settings");
-    const products = await dbAll("SELECT * FROM products");
-    const transactionsRaw = await dbAll("SELECT * FROM transactions");
-    const customers = await dbAll("SELECT * FROM customers");
+    const rawProducts = await dbAll("SELECT * FROM products");
+    const rawTransactions = await dbAll("SELECT * FROM transactions");
+    const rawCustomers = await dbAll("SELECT * FROM customers");
     
-    // Support both customer_ledger (Postgres) and ledgerEntries (SQLite)
     let ledgerEntries = [];
     try {
       ledgerEntries = await dbAll("SELECT * FROM customer_ledger ORDER BY date ASC");
@@ -319,9 +324,30 @@ app.get('/api/data', authenticateToken, async (req, res) => {
       ledgerEntries = await dbAll("SELECT * FROM ledgerEntries ORDER BY date ASC");
     }
 
-    const transactions = transactionsRaw.map(r => ({
+    // Normalize products so app.js receives exact expected properties
+    const products = rawProducts.map(p => ({
+      sku: String(p.sku || p.id || 'PROD_' + Math.random().toString(36).substr(2, 6)),
+      name: p.name || 'Unnamed Item',
+      category: p.category || 'General',
+      hsn: p.hsn || '',
+      costPrice: parseFloat(p.costPrice ?? p.purchasePrice ?? 0),
+      sellingPrice: parseFloat(p.sellingPrice ?? 0),
+      gstSlab: parseFloat(p.gstSlab ?? p.gstRate ?? 0),
+      discountPercent: parseFloat(p.discountPercent ?? 0),
+      stock: parseFloat(p.stock ?? 0),
+      reorderLevel: parseFloat(p.reorderLevel ?? 0),
+      unit: p.unit || 'pcs'
+    }));
+
+    const transactions = rawTransactions.map(r => ({
       ...r,
       items: typeof r.items === 'string' ? JSON.parse(r.items || '[]') : r.items
+    }));
+
+    const customers = rawCustomers.map(c => ({
+      ...c,
+      totalPurchased: parseFloat(c.totalPurchased ?? c.totalPurchases ?? 0),
+      balance: parseFloat(c.balance ?? 0)
     }));
 
     res.json({ products, transactions, customers, ledgerEntries, settings });
@@ -341,9 +367,10 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     // 1. Sync Products
     await dbRun("DELETE FROM products");
     for (const p of products) {
+      const sku = String(p.sku || p.id);
       await dbRun(
-        "INSERT INTO products (id, name, category, \"purchasePrice\", \"sellingPrice\", stock, unit, \"gstRate\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [p.id || p.sku, p.name, p.category, p.purchasePrice || p.costPrice || 0, p.sellingPrice || 0, p.stock || 0, p.unit || 'pcs', p.gstRate || p.gstSlab || 0]
+        "INSERT INTO products (sku, name, category, hsn, \"costPrice\", \"sellingPrice\", \"gstSlab\", \"discountPercent\", stock, \"reorderLevel\", unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [sku, p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
       );
     }
 
@@ -351,8 +378,8 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     await dbRun("DELETE FROM transactions");
     for (const t of transactions) {
       await dbRun(
-        "INSERT INTO transactions (id, date, \"customerName\", \"customerPhone\", subtotal, \"gstAmount\", \"discountAmount\", \"totalPayable\", \"paymentMethod\", items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [t.id, t.date, t.customerName, t.customerPhone, t.subtotal, t.gstAmount, t.discountAmount, t.totalPayable, t.paymentMethod, JSON.stringify(t.items)]
+        "INSERT INTO transactions (id, date, \"customerName\", \"customerPhone\", subtotal, \"discountType\", \"discountValue\", \"discountAmount\", \"gstAmount\", \"totalPayable\", \"paymentMethod\", items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [t.id, t.date, t.customerName, t.customerPhone, t.subtotal, t.discountType || 'flat', t.discountValue || 0, t.discountAmount || 0, t.gstAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', JSON.stringify(t.items)]
       );
     }
 
@@ -360,8 +387,8 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     await dbRun("DELETE FROM customers");
     for (const c of customers) {
       await dbRun(
-        "INSERT INTO customers (phone, name, \"totalPurchases\", balance) VALUES (?, ?, ?, ?)",
-        [c.phone, c.name, c.totalPurchases || c.totalPurchased || 0, c.balance || 0]
+        "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+        [c.phone, c.name, c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
       );
     }
 
