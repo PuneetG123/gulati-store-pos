@@ -2961,6 +2961,11 @@ function resetDistributorModal() {
 }
 
 function readDistributorFile(file) {
+  if (file.name.toLowerCase().endsWith('.pdf')) {
+    readDistributorPdf(file);
+    return;
+  }
+
   if (typeof XLSX === 'undefined') {
     alert("Excel parsing library is loading. Please wait a moment and try again.");
     return;
@@ -3212,4 +3217,108 @@ async function processDistributorImport() {
   document.getElementById("distributor-bill-modal").classList.remove("active");
   btn.innerText = "Import & Sync Inventory";
   alert(`SUCCESS! Successfully imported distributor bill and updated inventory (${importedCount} items synced).`);
+}
+
+async function readDistributorPdf(file) {
+  if (typeof pdfjsLib === 'undefined') {
+    alert("PDF parsing library is loading. Please wait a moment and try again.");
+    return;
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const typedarray = new Uint8Array(e.target.result);
+      const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+      
+      let fullTextLines = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        
+        const itemsByY = {};
+        textContent.items.forEach(item => {
+          const y = Math.round(item.transform[5]);
+          if (!itemsByY[y]) itemsByY[y] = [];
+          itemsByY[y].push(item.str);
+        });
+
+        const sortedY = Object.keys(itemsByY).sort((a, b) => b - a);
+        sortedY.forEach(y => {
+          const lineStr = itemsByY[y].join(" ").trim();
+          if (lineStr) fullTextLines.push(lineStr);
+        });
+      }
+
+      parseDistributorPdfLines(fullTextLines);
+    } catch (err) {
+      console.error("Failed to parse PDF invoice:", err);
+      alert("Could not read PDF invoice. Please ensure it is a text-based PDF invoice or try exporting as Excel/CSV.");
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseDistributorPdfLines(lines) {
+  distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
+  distributorParsedRows = [];
+
+  lines.forEach(line => {
+    // Skip invoice header/footer meta lines
+    const lower = line.toLowerCase();
+    if (lower.includes("invoice") || lower.includes("subtotal") || lower.includes("grand total") || lower.includes("bank details") || lower.includes("terms") || lower.includes("gstin") || line.length < 5) {
+      return;
+    }
+
+    // Match numbers in line (HSN, Qty, Rate, MRP, GST)
+    const numbers = line.match(/\d+(\.\d+)?/g);
+    if (!numbers || numbers.length < 2) return;
+
+    // Extract Product Name (text before numbers)
+    const nameMatch = line.match(/^[a-zA-Z0-9\s\-\.&\(\)\/]+/);
+    if (!nameMatch || nameMatch[0].trim().length < 3) return;
+
+    const name = nameMatch[0].replace(/^\d+\s*/, '').trim();
+    if (name.length < 3 || lower.includes("page") || lower.includes("total")) return;
+
+    // Detect HSN Code (4, 6, 8 digits)
+    let hsn = "2106";
+    const hsnMatch = line.match(/\b(040\d|190\d|110\d|151\d|220\d|340\d|180\d|250\d|\d{4}|\d{6}|\d{8})\b/);
+    if (hsnMatch) hsn = hsnMatch[0];
+
+    // Detect Prices and Quantities
+    const floatVals = numbers.map(n => parseFloat(n)).filter(n => !isNaN(n));
+    let costPrice = 0;
+    let sellingPrice = 0;
+    let gstSlab = 18;
+    let qty = 1;
+
+    floatVals.forEach(val => {
+      if (val === 5 || val === 12 || val === 18 || val === 28) gstSlab = val;
+      else if (val > 10 && val < 5000 && costPrice === 0) costPrice = val;
+      else if (val > costPrice && val < 6000 && sellingPrice === 0) sellingPrice = val;
+      else if (val >= 1 && val <= 500 && qty === 1 && val !== costPrice && val !== sellingPrice) qty = val;
+    });
+
+    if (sellingPrice === 0) sellingPrice = costPrice;
+
+    distributorParsedRows.push({
+      "Item Description": name,
+      "HSN Code": hsn,
+      "Basic Rate": costPrice.toString(),
+      "MRP": sellingPrice.toString(),
+      "GST %": gstSlab.toString(),
+      "Billed Qty": qty.toString(),
+      "Item Code": `PDF_${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+    });
+  });
+
+  populateColumnMappers();
+  applyDistributorPreset("itc");
+  generateDistributorPreview();
+
+  document.getElementById("distributor-mapping-section").style.display = "block";
+  document.getElementById("distributor-preview-container").style.display = "block";
 }
