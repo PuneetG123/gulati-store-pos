@@ -802,51 +802,55 @@ function renderPOSCart() {
 
     const step = item.product.unit === 'kg' ? 0.1 : 1;
 
-    let priceDetails = `${formatRupee(item.product.sellingPrice)} per ${item.product.unit} &bull; GST ${item.product.gstSlab}%`;
+    let priceDetails = `${formatRupee(item.product.sellingPrice)} per ${item.product.unit || 'pcs'} &bull; GST ${parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0)}%`;
     if (discountPct > 0) {
-      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit} <span style="text-decoration:line-through; font-size:11px; color:var(--text-muted); margin-left:4px;">${formatRupee(item.product.sellingPrice)}</span> <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${item.product.gstSlab}%`;
+      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit || 'pcs'} <span style="text-decoration:line-through; font-size:11px; color:var(--text-muted); margin-left:4px;">${formatRupee(item.product.sellingPrice)}</span> <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0)}%`;
     }
 
     const div = document.createElement("div");
     div.className = "cart-item";
     div.innerHTML = `
       <div class="cart-item-details">
-      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit || 'pcs'} <span style="text-decoration:line-through; font-size:11px; color:var(--text-muted); margin-left:4px;">${formatRupee(item.product.sellingPrice)}</span> <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${gstSlab}%`;
-    }
-
-    cartRow.innerHTML = `
-      <div class="cart-item-info">
-        <div class="cart-item-title">${item.product.name}</div>
-        <div class="cart-item-price-breakdown">${priceDetails}</div>
+        <h4>${item.product.name}</h4>
+        <p>${priceDetails}</p>
       </div>
-      <div class="cart-item-controls">
-        <button class="qty-btn" onclick="changeCartQty('${item.product.sku || item.product.id}', -1)">-</button>
-        <span class="qty-val">${item.quantity}</span>
-        <button class="qty-btn" onclick="changeCartQty('${item.product.sku || item.product.id}', 1)">+</button>
+      <div class="cart-item-qty">
+        <button class="qty-btn" onclick="changeCartQty('${item.product.sku || item.product.id}', -${step})">-</button>
+        <input type="number" class="qty-input-box" value="${item.quantity}" min="0.01" step="${step}" style="width:55px; text-align:center; background:var(--bg-main); border:1px solid var(--border-color); border-radius:4px; font-size:13px; color:var(--text-primary); font-weight:600; padding:2px;" onchange="updateCartItemQtyDirectly('${item.product.sku || item.product.id}', this.value)">
+        <button class="qty-btn" onclick="changeCartQty('${item.product.sku || item.product.id}', ${step})">+</button>
       </div>
-      <div class="cart-item-total">${formatRupee(itemTotal)}</div>
-      <button class="cart-remove-btn" onclick="removeFromCart('${item.product.sku || item.product.id}')" title="Remove Item">&times;</button>
+      <div class="cart-item-price">${formatRupee(lineTotal)}</div>
+      <div class="cart-item-delete" onclick="deleteCartItem('${item.product.sku || item.product.id}')">Remove item</div>
     `;
-    cartContainer.appendChild(cartRow);
+    cartWrapper.appendChild(div);
   });
 
-  // Calculate cart discounts & GST breakdown
-  const discountType = document.getElementById("pos-discount-type").value;
-  const discountVal = parseFloat(document.getElementById("pos-discount-val").value) || 0;
-  
+  // Calculate discount
+  const discType = document.getElementById("pos-discount-type").value;
+  const discVal = parseFloat(document.getElementById("pos-discount-value").value) || 0;
   let totalDiscount = 0;
-  if (discountType === 'percent') {
-    totalDiscount = grossTotal * (discountVal / 100);
-  } else {
-    totalDiscount = discountVal;
+
+  if (discType === 'flat') {
+    totalDiscount = Math.min(discVal, grossTotal);
+  } else if (discType === 'percentage') {
+    totalDiscount = (grossTotal * Math.min(discVal, 100)) / 100;
   }
-  totalDiscount = Math.min(totalDiscount, grossTotal);
 
   let totalTaxableSubtotal = 0;
   let totalGstAmount = 0;
 
   state.cart.forEach(item => {
     const itemInclusiveTotal = item.product.sellingPrice * item.quantity;
+    const proportionalDiscount = grossTotal > 0 ? (itemInclusiveTotal / grossTotal) * totalDiscount : 0;
+    const netItemInclusive = itemInclusiveTotal - proportionalDiscount;
+    
+    const gstSlab = parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0);
+    const baseTaxable = netItemInclusive / (1 + gstSlab / 100);
+    const gstValue = netItemInclusive - baseTaxable;
+
+    totalTaxableSubtotal += baseTaxable;
+    totalGstAmount += gstValue;
+  });
 
   const payableTotal = grossTotal - totalDiscount;
 
