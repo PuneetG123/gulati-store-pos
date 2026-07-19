@@ -3,7 +3,7 @@ const { Client } = require('pg');
 const path = require('path');
 
 const DB_FILE = path.join(__dirname, 'GULATISTORE.db');
-const SUPABASE_URL = 'postgresql://postgres:vQH76xKpcsRnnstK@db.nrwtrlqmtkjgbzpspzsp.supabase.co:5432/postgres';
+const SUPABASE_URL = 'postgres://postgres.nrwtrlqmtkjgbzpspzsp:vQH76xKpcsRnnstK@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
 
 const sqliteDb = new sqlite3.Database(DB_FILE, (err) => {
   if (err) {
@@ -23,19 +23,27 @@ async function migrate() {
     await pgClient.connect();
     console.log("Connected to Supabase PostgreSQL database.");
 
+    // Drop legacy tables to reset clean schemas
+    console.log("Resetting table schemas...");
+    await pgClient.query(`DROP TABLE IF EXISTS products;`);
+    await pgClient.query(`DROP TABLE IF EXISTS transactions;`);
+    await pgClient.query(`DROP TABLE IF EXISTS customers;`);
+    await pgClient.query(`DROP TABLE IF EXISTS customer_ledger;`);
+
     // Create Tables on Supabase
-    console.log("Creating PostgreSQL table schemas...");
-    
     await pgClient.query(`
       CREATE TABLE IF NOT EXISTS products (
-        id TEXT PRIMARY KEY,
+        sku TEXT PRIMARY KEY,
         name TEXT,
         category TEXT,
-        "purchasePrice" REAL,
+        hsn TEXT,
+        "costPrice" REAL,
         "sellingPrice" REAL,
+        "gstSlab" REAL,
+        "discountPercent" REAL,
         stock REAL,
-        unit TEXT,
-        "gstRate" REAL
+        "reorderLevel" REAL,
+        unit TEXT
       );
     `);
 
@@ -46,8 +54,10 @@ async function migrate() {
         "customerName" TEXT,
         "customerPhone" TEXT,
         subtotal REAL,
-        "gstAmount" REAL,
+        "discountType" TEXT,
+        "discountValue" REAL,
         "discountAmount" REAL,
+        "gstAmount" REAL,
         "totalPayable" REAL,
         "paymentMethod" TEXT,
         items TEXT
@@ -58,8 +68,9 @@ async function migrate() {
       CREATE TABLE IF NOT EXISTS customers (
         phone TEXT PRIMARY KEY,
         name TEXT,
-        "totalPurchases" REAL,
-        balance REAL
+        "totalPurchased" REAL,
+        balance REAL,
+        "lastTxn" TEXT
       );
     `);
 
@@ -96,7 +107,7 @@ async function migrate() {
     // Helper to fetch all rows from SQLite
     const sqliteAll = (sql) => new Promise((resolve, reject) => {
       sqliteDb.all(sql, [], (err, rows) => {
-        if (err) resolve([]); // Fallback empty array if table doesn't exist
+        if (err) resolve([]);
         else resolve(rows || []);
       });
     });
@@ -106,19 +117,22 @@ async function migrate() {
     console.log(`Migrating ${products.length} products...`);
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
-      const prodId = p.id ? String(p.id) : `prod_${i + 1}_${Date.now()}`;
+      const sku = String(p.sku || p.id || `prod_${i + 1}`);
       await pgClient.query(`
-        INSERT INTO products (id, name, category, "purchasePrice", "sellingPrice", stock, unit, "gstRate")
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (id) DO UPDATE SET
+        INSERT INTO products (sku, name, category, hsn, "costPrice", "sellingPrice", "gstSlab", "discountPercent", stock, "reorderLevel", unit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (sku) DO UPDATE SET
           name = EXCLUDED.name,
           category = EXCLUDED.category,
-          "purchasePrice" = EXCLUDED."purchasePrice",
+          hsn = EXCLUDED.hsn,
+          "costPrice" = EXCLUDED."costPrice",
           "sellingPrice" = EXCLUDED."sellingPrice",
+          "gstSlab" = EXCLUDED."gstSlab",
+          "discountPercent" = EXCLUDED."discountPercent",
           stock = EXCLUDED.stock,
-          unit = EXCLUDED.unit,
-          "gstRate" = EXCLUDED."gstRate";
-      `, [prodId, p.name || 'Unnamed Product', p.category || 'General', p.purchasePrice || 0, p.sellingPrice || 0, p.stock || 0, p.unit || 'pcs', p.gstRate || 0]);
+          "reorderLevel" = EXCLUDED."reorderLevel",
+          unit = EXCLUDED.unit;
+      `, [sku, p.name || 'Unnamed Product', p.category || 'General', p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']);
     }
 
     // 2. Migrate Transactions
@@ -128,19 +142,21 @@ async function migrate() {
       const t = transactions[i];
       const txnId = t.id ? String(t.id) : `TXN-${Date.now()}-${i + 1}`;
       await pgClient.query(`
-        INSERT INTO transactions (id, date, "customerName", "customerPhone", subtotal, "gstAmount", "discountAmount", "totalPayable", "paymentMethod", items)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO transactions (id, date, "customerName", "customerPhone", subtotal, "discountType", "discountValue", "discountAmount", "gstAmount", "totalPayable", "paymentMethod", items)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (id) DO UPDATE SET
           date = EXCLUDED.date,
           "customerName" = EXCLUDED."customerName",
           "customerPhone" = EXCLUDED."customerPhone",
           subtotal = EXCLUDED.subtotal,
-          "gstAmount" = EXCLUDED."gstAmount",
+          "discountType" = EXCLUDED."discountType",
+          "discountValue" = EXCLUDED."discountValue",
           "discountAmount" = EXCLUDED."discountAmount",
+          "gstAmount" = EXCLUDED."gstAmount",
           "totalPayable" = EXCLUDED."totalPayable",
           "paymentMethod" = EXCLUDED."paymentMethod",
           items = EXCLUDED.items;
-      `, [txnId, t.date || new Date().toISOString(), t.customerName || 'Walk-in Customer', t.customerPhone || '', t.subtotal || 0, t.gstAmount || 0, t.discountAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', t.items || '[]']);
+      `, [txnId, t.date || new Date().toISOString(), t.customerName || 'Walk-in Customer', t.customerPhone || '', t.subtotal || 0, t.discountType || 'flat', t.discountValue || 0, t.discountAmount || 0, t.gstAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', typeof t.items === 'string' ? t.items : JSON.stringify(t.items || [])]);
     }
 
     // 3. Migrate Customers
@@ -150,13 +166,14 @@ async function migrate() {
       const c = customers[i];
       const phone = c.phone ? String(c.phone) : `cust_${i + 1}`;
       await pgClient.query(`
-        INSERT INTO customers (phone, name, "totalPurchases", balance)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO customers (phone, name, "totalPurchased", balance, "lastTxn")
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (phone) DO UPDATE SET
           name = EXCLUDED.name,
-          "totalPurchases" = EXCLUDED."totalPurchases",
-          balance = EXCLUDED.balance;
-      `, [phone, c.name || 'Customer', c.totalPurchases || 0, c.balance || 0]);
+          "totalPurchased" = EXCLUDED."totalPurchased",
+          balance = EXCLUDED.balance,
+          "lastTxn" = EXCLUDED."lastTxn";
+      `, [phone, c.name || 'Customer', c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']);
     }
 
     // 4. Migrate Customer Ledger
@@ -192,7 +209,7 @@ async function migrate() {
 
     console.log("===============================================");
     console.log(" MIGRATION TO SUPABASE COMPLETED SUCCESSFULLY! ");
-    console.log(" All products, history & settings are now in the cloud.");
+    console.log(" All products, history & settings are now synced.");
     console.log("===============================================");
   } catch (err) {
     console.error("Migration failed:", err);
