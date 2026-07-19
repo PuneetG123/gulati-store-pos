@@ -294,14 +294,18 @@
             <h2>Product Catalog</h2>
             <p>Manage and audit products, pricing, stock and tax settings.</p>
           </div>
-          <div style="display:flex; gap:12px;">
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="inv-distributor-bill-btn" style="background-color: #8B5CF6; border-color: #7C3AED; color:#fff; display:flex; align-items:center; gap:6px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+              Upload Distributor Bill (ITC, Nestlé, HUL)
+            </button>
             <button class="btn btn-secondary" id="inv-export-csv-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
               Export CSV
             </button>
             <button class="btn btn-secondary" id="inv-import-modal-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-              Import CSV (Bulk)
+              Import CSV
             </button>
             <button class="btn btn-primary" id="inv-add-product-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -937,8 +941,109 @@
     </div>
   </div>
 
+  <!-- Distributor Invoice Import Modal -->
+  <div class="modal-overlay" id="distributor-bill-modal">
+    <div class="modal-content" style="max-width:850px; width:95%;">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h3 style="margin:0; font-size:18px; color:var(--text-primary);">Import Distributor Invoice (ITC, Nestlé, HUL, etc.)</h3>
+          <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">Upload Excel/CSV bill from your FMCG distributor or Marg/Tally/Vyapar ERP software</p>
+        </div>
+        <button class="btn-icon" id="distributor-modal-close" style="font-size:20px;">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding:16px 0;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div>
+            <label class="form-label" style="font-weight:600; margin-bottom:4px; display:block;">1. Select Distributor / Company Preset</label>
+            <select id="distributor-preset-select" class="form-control">
+              <option value="auto">⚡ Auto-Detect Column Headers</option>
+              <option value="itc">ITC Limited Invoice</option>
+              <option value="nestle">Nestlé India Invoice</option>
+              <option value="hul">Hindustan Unilever (HUL) Invoice</option>
+              <option value="britannia">Britannia Industries Invoice</option>
+              <option value="parle">Parle Products Invoice</option>
+              <option value="amul">Amul / GCMMF Invoice</option>
+              <option value="dabur">Dabur India Invoice</option>
+              <option value="tally">Tally / Marg / Vyapar ERP Export</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600; margin-bottom:4px; display:block;">2. Upload Invoice File (.xlsx, .xls, .csv)</label>
+            <input type="file" id="distributor-file-input" accept=".xlsx, .xls, .csv" class="form-control" style="padding:4px 8px;">
+          </div>
+        </div>
+
+        <!-- Smart Column Mapper Grid -->
+        <div id="distributor-mapping-section" style="background:var(--bg-main); padding:12px; border-radius:8px; margin-bottom:16px; display:none;">
+          <h4 style="margin:0 0 10px 0; font-size:14px; color:var(--primary);">Verify Column Mappings:</h4>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">Item Name Column *</label>
+              <select id="map-col-name" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">HSN Code Column</label>
+              <select id="map-col-hsn" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">Purchase / Basic Rate (₹)</label>
+              <select id="map-col-cost" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">MRP / Sale Rate (₹)</label>
+              <select id="map-col-mrp" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">GST % Column</label>
+              <select id="map-col-gst" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">Invoice Quantity (Stock +)</label>
+              <select id="map-col-qty" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">Barcode / SKU (Optional)</label>
+              <select id="map-col-sku" class="form-control" style="font-size:12px; height:32px;"></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview Table -->
+        <div id="distributor-preview-container" style="max-height:280px; overflow-y:auto; border:1px solid var(--border-color); border-radius:6px; display:none;">
+          <table style="width:100%; font-size:12px; text-align:left; border-collapse:collapse;">
+            <thead style="background:var(--bg-main); sticky:top; position:sticky; top:0;">
+              <tr>
+                <th style="padding:8px;">Action Status</th>
+                <th style="padding:8px;">SKU / Barcode</th>
+                <th style="padding:8px;">Item Description</th>
+                <th style="padding:8px;">HSN</th>
+                <th style="padding:8px;">Purchase Rate</th>
+                <th style="padding:8px;">MRP</th>
+                <th style="padding:8px;">GST %</th>
+                <th style="padding:8px;">Billed Qty</th>
+              </tr>
+            </thead>
+            <tbody id="distributor-preview-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
+        <span id="distributor-summary-text" style="font-size:13px; font-weight:600; color:var(--text-secondary);">No file loaded.</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" id="distributor-cancel-btn">Cancel</button>
+          <button class="btn btn-primary" id="distributor-process-btn" style="background-color: #8B5CF6; border-color: #7C3AED; color:#fff;" disabled>
+            Import & Sync Inventory
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Javascript Modules -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="initial-data.js"></script>
   <script src="app.js"></script>
 </body>
