@@ -811,50 +811,42 @@ function renderPOSCart() {
     div.className = "cart-item";
     div.innerHTML = `
       <div class="cart-item-details">
-        <h4>${item.product.name}</h4>
-        <p>${priceDetails}</p>
+      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit || 'pcs'} <span style="text-decoration:line-through; font-size:11px; color:var(--text-muted); margin-left:4px;">${formatRupee(item.product.sellingPrice)}</span> <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${gstSlab}%`;
+    }
+
+    cartRow.innerHTML = `
+      <div class="cart-item-info">
+        <div class="cart-item-title">${item.product.name}</div>
+        <div class="cart-item-price-breakdown">${priceDetails}</div>
       </div>
-      <div class="cart-item-qty">
-        <button class="qty-btn" onclick="changeCartQty('${item.product.sku}', -${step})">-</button>
-        <input type="number" class="qty-input-box" value="${item.quantity}" min="0.01" step="${step}" style="width:55px; text-align:center; background:var(--bg-main); border:1px solid var(--border-color); border-radius:4px; font-size:13px; color:var(--text-primary); font-weight:600; padding:2px;" onchange="updateCartItemQtyDirectly('${item.product.sku}', this.value)">
-        <button class="qty-btn" onclick="changeCartQty('${item.product.sku}', ${step})">+</button>
+      <div class="cart-item-controls">
+        <button class="qty-btn" onclick="changeCartQty('${item.product.sku || item.product.id}', -1)">-</button>
+        <span class="qty-val">${item.quantity}</span>
+        <button class="qty-btn" onclick="changeCartQty('${item.product.sku || item.product.id}', 1)">+</button>
       </div>
-      <div class="cart-item-price">${formatRupee(lineTotal)}</div>
-      <div class="cart-item-delete" onclick="deleteCartItem('${item.product.sku}')">Remove item</div>
+      <div class="cart-item-total">${formatRupee(itemTotal)}</div>
+      <button class="cart-remove-btn" onclick="removeFromCart('${item.product.sku || item.product.id}')" title="Remove Item">&times;</button>
     `;
-    cartWrapper.appendChild(div);
+    cartContainer.appendChild(cartRow);
   });
 
-  // Calculate discount
-  const discType = document.getElementById("pos-discount-type").value;
-  const discVal = parseFloat(document.getElementById("pos-discount-value").value) || 0;
+  // Calculate cart discounts & GST breakdown
+  const discountType = document.getElementById("pos-discount-type").value;
+  const discountVal = parseFloat(document.getElementById("pos-discount-val").value) || 0;
+  
   let totalDiscount = 0;
-
-  if (discType === 'flat') {
-    totalDiscount = Math.min(discVal, grossTotal);
-  } else if (discType === 'percentage') {
-    totalDiscount = (grossTotal * Math.min(discVal, 100)) / 100;
+  if (discountType === 'percent') {
+    totalDiscount = grossTotal * (discountVal / 100);
+  } else {
+    totalDiscount = discountVal;
   }
+  totalDiscount = Math.min(totalDiscount, grossTotal);
 
-  // 2. GST Extraction & Splits calculations (compliant with Indian rules)
-  // To divide tax fairly, we allocate the discount proportionally to each item's sale value
   let totalTaxableSubtotal = 0;
   let totalGstAmount = 0;
 
   state.cart.forEach(item => {
     const itemInclusiveTotal = item.product.sellingPrice * item.quantity;
-    
-    // Proportional discount slice for this item
-    const proportionalDiscount = grossTotal > 0 ? (itemInclusiveTotal / grossTotal) * totalDiscount : 0;
-    const netItemInclusive = itemInclusiveTotal - proportionalDiscount;
-    
-    // Extract base taxable value: Base = Inclusive / (1 + GST_Rate%)
-    const baseTaxable = netItemInclusive / (1 + item.product.gstSlab / 100);
-    const gstValue = netItemInclusive - baseTaxable;
-
-    totalTaxableSubtotal += baseTaxable;
-    totalGstAmount += gstValue;
-  });
 
   const payableTotal = grossTotal - totalDiscount;
 
