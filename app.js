@@ -2892,6 +2892,324 @@ function generateTextReceipt(txn) {
   return r;
 }
 
+  // Bind Distributor Bill Importer Button
+  setupDistributorBillImporter();
+}
+
 function formatRupeeText(val) {
   return "Rs." + parseFloat(val).toFixed(2);
+}
+
+// ----------------------------------------------------
+// DISTRIBUTOR INVOICE IMPORTER (ITC, NESTLÉ, HUL, ETC.)
+// ----------------------------------------------------
+let distributorFileData = null;
+let distributorHeaders = [];
+let distributorParsedRows = [];
+
+function setupDistributorBillImporter() {
+  const openBtn = document.getElementById("inv-distributor-bill-btn");
+  const modal = document.getElementById("distributor-bill-modal");
+  const closeBtn = document.getElementById("distributor-modal-close");
+  const cancelBtn = document.getElementById("distributor-cancel-btn");
+  const fileInput = document.getElementById("distributor-file-input");
+  const presetSelect = document.getElementById("distributor-preset-select");
+  const processBtn = document.getElementById("distributor-process-btn");
+
+  if (!openBtn || !modal) return;
+
+  openBtn.addEventListener("click", () => {
+    modal.classList.add("active");
+    resetDistributorModal();
+  });
+
+  const closeModal = () => modal.classList.remove("active");
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    readDistributorFile(file);
+  });
+
+  presetSelect.addEventListener("change", () => {
+    if (distributorHeaders.length > 0) {
+      applyDistributorPreset(presetSelect.value);
+      generateDistributorPreview();
+    }
+  });
+
+  // Column mapper change listeners
+  ["map-col-name", "map-col-hsn", "map-col-cost", "map-col-mrp", "map-col-gst", "map-col-qty", "map-col-sku"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", generateDistributorPreview);
+  });
+
+  processBtn.addEventListener("click", processDistributorImport);
+}
+
+function resetDistributorModal() {
+  document.getElementById("distributor-file-input").value = "";
+  document.getElementById("distributor-mapping-section").style.display = "none";
+  document.getElementById("distributor-preview-container").style.display = "none";
+  document.getElementById("distributor-summary-text").innerText = "No file loaded.";
+  document.getElementById("distributor-process-btn").disabled = true;
+  distributorFileData = null;
+  distributorHeaders = [];
+  distributorParsedRows = [];
+}
+
+function readDistributorFile(file) {
+  if (typeof XLSX === 'undefined') {
+    alert("Excel parsing library is loading. Please wait a moment and try again.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      const jsonRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+      if (!jsonRows || jsonRows.length < 2) {
+        alert("The uploaded file does not contain enough data rows.");
+        return;
+      }
+
+      // Find Header Row (first row with non-empty text cells)
+      let headerIndex = 0;
+      for (let i = 0; i < Math.min(jsonRows.length, 10); i++) {
+        const row = jsonRows[i];
+        if (Array.isArray(row) && row.filter(cell => cell.toString().trim() !== "").length >= 2) {
+          headerIndex = i;
+          break;
+        }
+      }
+
+      distributorHeaders = jsonRows[headerIndex].map((h, idx) => h ? h.toString().trim() : `Column ${idx + 1}`);
+      
+      // Parse Rows below Header
+      distributorParsedRows = [];
+      for (let i = headerIndex + 1; i < jsonRows.length; i++) {
+        const row = jsonRows[i];
+        if (!Array.isArray(row) || row.every(cell => cell.toString().trim() === "")) continue;
+        const rowObj = {};
+        distributorHeaders.forEach((colName, colIdx) => {
+          rowObj[colName] = row[colIdx] !== undefined ? row[colIdx].toString().trim() : "";
+        });
+        distributorParsedRows.push(rowObj);
+      }
+
+      populateColumnMappers();
+      const preset = document.getElementById("distributor-preset-select").value;
+      applyDistributorPreset(preset);
+      generateDistributorPreview();
+
+      document.getElementById("distributor-mapping-section").style.display = "block";
+      document.getElementById("distributor-preview-container").style.display = "block";
+    } catch (err) {
+      console.error("Failed to read distributor bill file:", err);
+      alert("Could not parse file. Please ensure it is a valid Excel (.xlsx/.xls) or CSV file.");
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function populateColumnMappers() {
+  const mappers = ["map-col-name", "map-col-hsn", "map-col-cost", "map-col-mrp", "map-col-gst", "map-col-qty", "map-col-sku"];
+  mappers.forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.innerHTML = `<option value="">-- Select Column --</option>`;
+    distributorHeaders.forEach(header => {
+      const opt = document.createElement("option");
+      opt.value = header;
+      opt.innerText = header;
+      select.appendChild(opt);
+    });
+  });
+}
+
+function applyDistributorPreset(presetKey) {
+  const findCol = (keywords) => {
+    return distributorHeaders.find(h => {
+      const lower = h.toLowerCase();
+      return keywords.some(k => lower.includes(k));
+    }) || "";
+  };
+
+  if (presetKey === "itc") {
+    setVal("map-col-name", findCol(["item description", "description", "item name", "particulars"]));
+    setVal("map-col-hsn", findCol(["hsn", "sac"]));
+    setVal("map-col-cost", findCol(["billing rate", "basic rate", "rate", "cost"]));
+    setVal("map-col-mrp", findCol(["mrp", "sale rate", "selling price"]));
+    setVal("map-col-gst", findCol(["gst", "tax"]));
+    setVal("map-col-qty", findCol(["quantity", "billed qty", "qty", "ea", "cs"]));
+    setVal("map-col-sku", findCol(["ean", "item code", "code", "sku", "barcode"]));
+  } else if (presetKey === "nestle") {
+    setVal("map-col-name", findCol(["material description", "description", "item"]));
+    setVal("map-col-hsn", findCol(["hsn"]));
+    setVal("map-col-cost", findCol(["rlp", "rate", "cost", "basic"]));
+    setVal("map-col-mrp", findCol(["mrp", "selling"]));
+    setVal("map-col-gst", findCol(["tax rate", "gst", "tax"]));
+    setVal("map-col-qty", findCol(["billing qty", "qty", "quantity"]));
+    setVal("map-col-sku", findCol(["material code", "ean", "sku", "code"]));
+  } else if (presetKey === "hul") {
+    setVal("map-col-name", findCol(["product description", "description", "item"]));
+    setVal("map-col-hsn", findCol(["hsn code", "hsn"]));
+    setVal("map-col-cost", findCol(["ptr", "basic rate", "rate"]));
+    setVal("map-col-mrp", findCol(["mrp", "sale price"]));
+    setVal("map-col-gst", findCol(["gst %", "gst", "tax"]));
+    setVal("map-col-qty", findCol(["billed qty", "qty", "cases"]));
+    setVal("map-col-sku", findCol(["ean code", "ean", "code"]));
+  } else {
+    // Auto-detect headers
+    setVal("map-col-name", findCol(["name", "description", "particulars", "item", "product"]));
+    setVal("map-col-hsn", findCol(["hsn", "sac"]));
+    setVal("map-col-cost", findCol(["purchase", "cost", "basic", "ptr", "rate", "price"]));
+    setVal("map-col-mrp", findCol(["mrp", "sale", "selling"]));
+    setVal("map-col-gst", findCol(["gst", "tax"]));
+    setVal("map-col-qty", findCol(["qty", "quantity", "pcs", "bll", "nos"]));
+    setVal("map-col-sku", findCol(["sku", "code", "barcode", "ean"]));
+  }
+}
+
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (el && val) el.value = val;
+}
+
+function generateDistributorPreview() {
+  const colName = document.getElementById("map-col-name").value;
+  const colHsn = document.getElementById("map-col-hsn").value;
+  const colCost = document.getElementById("map-col-cost").value;
+  const colMrp = document.getElementById("map-col-mrp").value;
+  const colGst = document.getElementById("map-col-gst").value;
+  const colQty = document.getElementById("map-col-qty").value;
+  const colSku = document.getElementById("map-col-sku").value;
+
+  const tbody = document.getElementById("distributor-preview-tbody");
+  tbody.innerHTML = "";
+
+  if (!colName) {
+    document.getElementById("distributor-summary-text").innerText = "Please select Item Name Column.";
+    document.getElementById("distributor-process-btn").disabled = true;
+    return;
+  }
+
+  let newCount = 0;
+  let updateCount = 0;
+
+  distributorParsedRows.forEach((row) => {
+    const rawName = row[colName] ? row[colName].toString().trim() : "";
+    if (!rawName) return;
+
+    const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    const sku = colSku && row[colSku] ? String(row[colSku]).trim() : `BILL_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const hsn = colHsn && row[colHsn] ? String(row[colHsn]).trim().replace(/[^0-9]/g, '') : "2106";
+    const costPrice = colCost && row[colCost] ? parseFloat(row[colCost].replace(/[^0-9.]/g, '')) || 0 : 0;
+    const sellingPrice = colMrp && row[colMrp] ? parseFloat(row[colMrp].replace(/[^0-9.]/g, '')) || costPrice : costPrice;
+    const gstSlab = colGst && row[colGst] ? parseFloat(row[colGst].replace(/[^0-9.]/g, '')) || 18 : 18;
+    const qty = colQty && row[colQty] ? parseFloat(row[colQty].replace(/[^0-9.]/g, '')) || 1 : 1;
+
+    // Check if item already exists in inventory
+    const existing = state.products.find(p => String(p.sku || p.id).toLowerCase() === sku.toLowerCase() || p.name.toLowerCase() === name.toLowerCase());
+
+    let statusBadge = "";
+    if (existing) {
+      updateCount++;
+      statusBadge = `<span class="badge badge-warning" style="font-size:10px;">Update Stock (+${qty})</span>`;
+    } else {
+      newCount++;
+      statusBadge = `<span class="badge badge-success" style="font-size:10px;">New Item (+${qty})</span>`;
+    }
+
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid var(--border-color)";
+    tr.innerHTML = `
+      <td style="padding:6px 8px;">${statusBadge}</td>
+      <td style="padding:6px 8px; font-family:monospace;">${existing ? existing.sku : sku}</td>
+      <td style="padding:6px 8px; font-weight:600;">${name}</td>
+      <td style="padding:6px 8px;">${hsn}</td>
+      <td style="padding:6px 8px;">₹${costPrice.toFixed(2)}</td>
+      <td style="padding:6px 8px;">₹${sellingPrice.toFixed(2)}</td>
+      <td style="padding:6px 8px;">${gstSlab}%</td>
+      <td style="padding:6px 8px; font-weight:700;">+${qty}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const totalParsed = newCount + updateCount;
+  document.getElementById("distributor-summary-text").innerText = `Ready to import ${totalParsed} items (${newCount} New Products, ${updateCount} Stock Updates).`;
+  document.getElementById("distributor-process-btn").disabled = totalParsed === 0;
+}
+
+async function processDistributorImport() {
+  const colName = document.getElementById("map-col-name").value;
+  const colHsn = document.getElementById("map-col-hsn").value;
+  const colCost = document.getElementById("map-col-cost").value;
+  const colMrp = document.getElementById("map-col-mrp").value;
+  const colGst = document.getElementById("map-col-gst").value;
+  const colQty = document.getElementById("map-col-qty").value;
+  const colSku = document.getElementById("map-col-sku").value;
+
+  const btn = document.getElementById("distributor-process-btn");
+  btn.disabled = true;
+  btn.innerText = "Syncing Inventory...";
+
+  let importedCount = 0;
+
+  distributorParsedRows.forEach(row => {
+    const rawName = row[colName] ? row[colName].toString().trim() : "";
+    if (!rawName) return;
+
+    const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    const sku = colSku && row[colSku] ? String(row[colSku]).trim() : `DIST_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const hsn = colHsn && row[colHsn] ? String(row[colHsn]).trim().replace(/[^0-9]/g, '') : "2106";
+    const costPrice = colCost && row[colCost] ? parseFloat(row[colCost].replace(/[^0-9.]/g, '')) || 0 : 0;
+    const sellingPrice = colMrp && row[colMrp] ? parseFloat(row[colMrp].replace(/[^0-9.]/g, '')) || costPrice : costPrice;
+    const gstSlab = colGst && row[colGst] ? parseFloat(row[colGst].replace(/[^0-9.]/g, '')) || 18 : 18;
+    const qty = colQty && row[colQty] ? parseFloat(row[colQty].replace(/[^0-9.]/g, '')) || 1 : 1;
+
+    // Check if product exists in inventory by SKU or Name
+    const existingIndex = state.products.findIndex(p => String(p.sku || p.id).toLowerCase() === sku.toLowerCase() || p.name.toLowerCase() === name.toLowerCase());
+
+    if (existingIndex >= 0) {
+      // Update Stock and Prices of Existing Item
+      state.products[existingIndex].stock += qty;
+      if (costPrice > 0) state.products[existingIndex].costPrice = costPrice;
+      if (sellingPrice > 0) state.products[existingIndex].sellingPrice = sellingPrice;
+      if (hsn) state.products[existingIndex].hsn = hsn;
+      if (gstSlab >= 0) state.products[existingIndex].gstSlab = gstSlab;
+    } else {
+      // Add Brand New Item to Inventory
+      state.products.push({
+        sku: sku,
+        name: name,
+        category: "Distributor FMCG",
+        hsn: hsn,
+        costPrice: costPrice,
+        sellingPrice: sellingPrice,
+        gstSlab: gstSlab,
+        discountPercent: 0,
+        stock: qty,
+        reorderLevel: 10,
+        unit: "pcs"
+      });
+    }
+    importedCount++;
+  });
+
+  // Save to Storage & Cloud Database
+  saveProductsToStorage();
+  renderInventory();
+  renderPOSCatalog();
+
+  document.getElementById("distributor-bill-modal").classList.remove("active");
+  btn.innerText = "Import & Sync Inventory";
+  alert(`SUCCESS! Successfully imported distributor bill and updated inventory (${importedCount} items synced).`);
 }
