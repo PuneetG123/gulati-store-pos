@@ -1341,6 +1341,9 @@ function setupInventoryActions() {
       renderAll();
     }
   });
+
+  // Setup Distributor Bill Importer
+  setupDistributorBillImporter();
 }
 
 function renderInventoryCategoriesFilter() {
@@ -2890,10 +2893,6 @@ function generateTextReceipt(txn) {
   r += "\n            Thank You! Visit Again.\n\n\n\n\n\n\n\n\n";
   r += "\u001d\u0056\u0001"; // ESC/POS Paper Cut Command (GS V 1)
   return r;
-}
-
-  // Bind Distributor Bill Importer Button
-  setupDistributorBillImporter();
 }
 
 function formatRupeeText(val) {
