@@ -3038,21 +3038,26 @@ function populateColumnMappers() {
   });
 }
 
+let distributorActivePreviewRows = [];
+
 function applyDistributorPreset(presetKey) {
   const findCol = (keywords) => {
     return distributorHeaders.find(h => {
-      const lower = h.toLowerCase().replace(/[^a-z0-9]/g, ' ');
-      return keywords.some(k => lower.includes(k));
+      const cleanHeader = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return keywords.some(k => {
+        const cleanKw = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return cleanHeader.includes(cleanKw) || cleanKw.includes(cleanHeader);
+      });
     }) || "";
   };
 
-  const nameCol = findCol(["item description", "product description", "material description", "item name", "product name", "description", "particulars", "item", "product", "article", "goods", "desc", "title"]);
+  const nameCol = findCol(["item description", "product description", "material description", "item name", "product name", "description", "particulars", "item", "product", "article", "goods", "desc", "title", "particular", "name"]);
   const hsnCol = findCol(["hsn sac", "hsn code", "hsncode", "hsn", "sac", "tariff"]);
-  const costCol = findCol(["billing rate", "basic rate", "purchase rate", "unit rate", "buy rate", "purchase price", "taxable value", "ptr", "rlp", "basic", "cost", "rate"]);
-  const mrpCol = findCol(["mrp", "sale rate", "selling price", "sale price", "retail price", "list price", "consumer price"]);
-  const gstCol = findCol(["gst rate", "gst percentage", "tax rate", "tax percentage", "cgst sgst", "gst", "tax", "vat", "igst"]);
-  const qtyCol = findCol(["billed qty", "billing qty", "inv qty", "quantity", "billed quantity", "qty", "pcs", "cases", "ea", "cs", "boxes", "nos", "count", "units"]);
-  const skuCol = findCol(["ean code", "material code", "item code", "article code", "code", "barcode", "ean", "sku", "upc", "gtin"]);
+  const costCol = findCol(["billing rate", "basic rate", "purchase rate", "unit rate", "buy rate", "purchase price", "taxable value", "ptr", "rlp", "basic", "cost", "rate", "price", "amount"]);
+  const mrpCol = findCol(["mrp", "sale rate", "selling price", "sale price", "retail price", "list price", "consumer price", "saleprice", "salerate"]);
+  const gstCol = findCol(["gst rate", "gst percentage", "tax rate", "tax percentage", "cgst sgst", "gst", "tax", "vat", "igst", "cgst", "sgst"]);
+  const qtyCol = findCol(["billed qty", "billing qty", "inv qty", "quantity", "billed quantity", "qty", "pcs", "cases", "ea", "cs", "boxes", "nos", "count", "units", "pack"]);
+  const skuCol = findCol(["ean code", "material code", "item code", "article code", "code", "barcode", "ean", "sku", "upc", "gtin", "bar code"]);
 
   setVal("map-col-name", nameCol);
   setVal("map-col-hsn", hsnCol);
@@ -3077,19 +3082,16 @@ function generateDistributorPreview() {
   const colQty = document.getElementById("map-col-qty").value;
   const colSku = document.getElementById("map-col-sku").value;
 
-  const tbody = document.getElementById("distributor-preview-tbody");
-  tbody.innerHTML = "";
+  distributorActivePreviewRows = [];
 
   if (!colName) {
+    document.getElementById("distributor-preview-tbody").innerHTML = "";
     document.getElementById("distributor-summary-text").innerText = "Please select Item Name Column.";
     document.getElementById("distributor-process-btn").disabled = true;
     return;
   }
 
-  let newCount = 0;
-  let updateCount = 0;
-
-  distributorParsedRows.forEach((row) => {
+  distributorParsedRows.forEach((row, rawIdx) => {
     const rawName = row[colName] ? row[colName].toString().trim() : "";
     if (!rawName) return;
 
@@ -3101,87 +3103,101 @@ function generateDistributorPreview() {
     const gstSlab = colGst && row[colGst] ? parseFloat(row[colGst].replace(/[^0-9.]/g, '')) || 18 : 18;
     const qty = colQty && row[colQty] ? parseFloat(row[colQty].replace(/[^0-9.]/g, '')) || 1 : 1;
 
-    // Check if item already exists in inventory
-    const existing = state.products.find(p => String(p.sku || p.id).toLowerCase() === sku.toLowerCase() || p.name.toLowerCase() === name.toLowerCase());
+    distributorActivePreviewRows.push({
+      id: rawIdx,
+      sku,
+      name,
+      hsn,
+      costPrice,
+      sellingPrice,
+      gstSlab,
+      qty
+    });
+  });
+
+  renderDistributorPreviewTable();
+}
+
+function renderDistributorPreviewTable() {
+  const tbody = document.getElementById("distributor-preview-tbody");
+  tbody.innerHTML = "";
+
+  let newCount = 0;
+  let updateCount = 0;
+
+  distributorActivePreviewRows.forEach((item, previewIdx) => {
+    const existing = state.products.find(p => String(p.sku || p.id).toLowerCase() === item.sku.toLowerCase() || p.name.toLowerCase() === item.name.toLowerCase());
 
     let statusBadge = "";
     if (existing) {
       updateCount++;
-      statusBadge = `<span class="badge badge-warning" style="font-size:10px;">Update Stock (+${qty})</span>`;
+      statusBadge = `<span class="badge badge-warning" style="font-size:10px;">Update Stock (+${item.qty})</span>`;
     } else {
       newCount++;
-      statusBadge = `<span class="badge badge-success" style="font-size:10px;">New Item (+${qty})</span>`;
+      statusBadge = `<span class="badge badge-success" style="font-size:10px;">New Item (+${item.qty})</span>`;
     }
 
     const tr = document.createElement("tr");
     tr.style.borderBottom = "1px solid var(--border-color)";
     tr.innerHTML = `
       <td style="padding:6px 8px;">${statusBadge}</td>
-      <td style="padding:6px 8px; font-family:monospace;">${existing ? existing.sku : sku}</td>
-      <td style="padding:6px 8px; font-weight:600;">${name}</td>
-      <td style="padding:6px 8px;">${hsn}</td>
-      <td style="padding:6px 8px;">₹${costPrice.toFixed(2)}</td>
-      <td style="padding:6px 8px;">₹${sellingPrice.toFixed(2)}</td>
-      <td style="padding:6px 8px;">${gstSlab}%</td>
-      <td style="padding:6px 8px; font-weight:700;">+${qty}</td>
+      <td style="padding:6px 8px; font-family:monospace;">${existing ? existing.sku : item.sku}</td>
+      <td style="padding:6px 8px; font-weight:600;">${item.name}</td>
+      <td style="padding:6px 8px;">${item.hsn}</td>
+      <td style="padding:6px 8px;">₹${item.costPrice.toFixed(2)}</td>
+      <td style="padding:6px 8px;">₹${item.sellingPrice.toFixed(2)}</td>
+      <td style="padding:6px 8px;">${item.gstSlab}%</td>
+      <td style="padding:6px 8px; font-weight:700;">+${item.qty}</td>
+      <td style="padding:6px 8px; text-align:center;">
+        <button class="btn-icon-only" onclick="deleteDistributorPreviewRow(${previewIdx})" title="Delete Row from Import" style="color:var(--danger);">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
 
-  const totalParsed = newCount + updateCount;
+  const totalParsed = distributorActivePreviewRows.length;
   document.getElementById("distributor-summary-text").innerText = `Ready to import ${totalParsed} items (${newCount} New Products, ${updateCount} Stock Updates).`;
   document.getElementById("distributor-process-btn").disabled = totalParsed === 0;
 }
 
-async function processDistributorImport() {
-  const colName = document.getElementById("map-col-name").value;
-  const colHsn = document.getElementById("map-col-hsn").value;
-  const colCost = document.getElementById("map-col-cost").value;
-  const colMrp = document.getElementById("map-col-mrp").value;
-  const colGst = document.getElementById("map-col-gst").value;
-  const colQty = document.getElementById("map-col-qty").value;
-  const colSku = document.getElementById("map-col-sku").value;
+window.deleteDistributorPreviewRow = function(previewIdx) {
+  if (previewIdx >= 0 && previewIdx < distributorActivePreviewRows.length) {
+    distributorActivePreviewRows.splice(previewIdx, 1);
+    renderDistributorPreviewTable();
+  }
+};
 
+async function processDistributorImport() {
   const btn = document.getElementById("distributor-process-btn");
   btn.disabled = true;
   btn.innerText = "Syncing Inventory...";
 
   let importedCount = 0;
 
-  distributorParsedRows.forEach(row => {
-    const rawName = row[colName] ? row[colName].toString().trim() : "";
-    if (!rawName) return;
-
-    const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-    const sku = colSku && row[colSku] ? String(row[colSku]).trim() : `DIST_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const hsn = colHsn && row[colHsn] ? String(row[colHsn]).trim().replace(/[^0-9]/g, '') : "2106";
-    const costPrice = colCost && row[colCost] ? parseFloat(row[colCost].replace(/[^0-9.]/g, '')) || 0 : 0;
-    const sellingPrice = colMrp && row[colMrp] ? parseFloat(row[colMrp].replace(/[^0-9.]/g, '')) || costPrice : costPrice;
-    const gstSlab = colGst && row[colGst] ? parseFloat(row[colGst].replace(/[^0-9.]/g, '')) || 18 : 18;
-    const qty = colQty && row[colQty] ? parseFloat(row[colQty].replace(/[^0-9.]/g, '')) || 1 : 1;
-
-    // Check if product exists in inventory by SKU or Name
-    const existingIndex = state.products.findIndex(p => String(p.sku || p.id).toLowerCase() === sku.toLowerCase() || p.name.toLowerCase() === name.toLowerCase());
+  distributorActivePreviewRows.forEach(item => {
+    const existingIndex = state.products.findIndex(p => String(p.sku || p.id).toLowerCase() === item.sku.toLowerCase() || p.name.toLowerCase() === item.name.toLowerCase());
 
     if (existingIndex >= 0) {
       // Update Stock and Prices of Existing Item
-      state.products[existingIndex].stock += qty;
-      if (costPrice > 0) state.products[existingIndex].costPrice = costPrice;
-      if (sellingPrice > 0) state.products[existingIndex].sellingPrice = sellingPrice;
-      if (hsn) state.products[existingIndex].hsn = hsn;
-      if (gstSlab >= 0) state.products[existingIndex].gstSlab = gstSlab;
+      state.products[existingIndex].stock += item.qty;
+      if (item.costPrice > 0) state.products[existingIndex].costPrice = item.costPrice;
+      if (item.sellingPrice > 0) state.products[existingIndex].sellingPrice = item.sellingPrice;
+      if (item.hsn) state.products[existingIndex].hsn = item.hsn;
+      if (item.gstSlab >= 0) state.products[existingIndex].gstSlab = item.gstSlab;
     } else {
       // Add Brand New Item to Inventory
       state.products.push({
-        sku: sku,
-        name: name,
+        sku: item.sku,
+        name: item.name,
         category: "Distributor FMCG",
-        hsn: hsn,
-        costPrice: costPrice,
-        sellingPrice: sellingPrice,
-        gstSlab: gstSlab,
+        hsn: item.hsn,
+        costPrice: item.costPrice,
+        sellingPrice: item.sellingPrice,
+        gstSlab: item.gstSlab,
         discountPercent: 0,
-        stock: qty,
+        stock: item.qty,
         reorderLevel: 10,
         unit: "pcs"
       });
