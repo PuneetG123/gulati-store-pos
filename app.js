@@ -3041,45 +3041,26 @@ function populateColumnMappers() {
 function applyDistributorPreset(presetKey) {
   const findCol = (keywords) => {
     return distributorHeaders.find(h => {
-      const lower = h.toLowerCase();
+      const lower = h.toLowerCase().replace(/[^a-z0-9]/g, ' ');
       return keywords.some(k => lower.includes(k));
     }) || "";
   };
 
-  if (presetKey === "itc") {
-    setVal("map-col-name", findCol(["item description", "description", "item name", "particulars"]));
-    setVal("map-col-hsn", findCol(["hsn", "sac"]));
-    setVal("map-col-cost", findCol(["billing rate", "basic rate", "rate", "cost"]));
-    setVal("map-col-mrp", findCol(["mrp", "sale rate", "selling price"]));
-    setVal("map-col-gst", findCol(["gst", "tax"]));
-    setVal("map-col-qty", findCol(["quantity", "billed qty", "qty", "ea", "cs"]));
-    setVal("map-col-sku", findCol(["ean", "item code", "code", "sku", "barcode"]));
-  } else if (presetKey === "nestle") {
-    setVal("map-col-name", findCol(["material description", "description", "item"]));
-    setVal("map-col-hsn", findCol(["hsn"]));
-    setVal("map-col-cost", findCol(["rlp", "rate", "cost", "basic"]));
-    setVal("map-col-mrp", findCol(["mrp", "selling"]));
-    setVal("map-col-gst", findCol(["tax rate", "gst", "tax"]));
-    setVal("map-col-qty", findCol(["billing qty", "qty", "quantity"]));
-    setVal("map-col-sku", findCol(["material code", "ean", "sku", "code"]));
-  } else if (presetKey === "hul") {
-    setVal("map-col-name", findCol(["product description", "description", "item"]));
-    setVal("map-col-hsn", findCol(["hsn code", "hsn"]));
-    setVal("map-col-cost", findCol(["ptr", "basic rate", "rate"]));
-    setVal("map-col-mrp", findCol(["mrp", "sale price"]));
-    setVal("map-col-gst", findCol(["gst %", "gst", "tax"]));
-    setVal("map-col-qty", findCol(["billed qty", "qty", "cases"]));
-    setVal("map-col-sku", findCol(["ean code", "ean", "code"]));
-  } else {
-    // Auto-detect headers
-    setVal("map-col-name", findCol(["name", "description", "particulars", "item", "product"]));
-    setVal("map-col-hsn", findCol(["hsn", "sac"]));
-    setVal("map-col-cost", findCol(["purchase", "cost", "basic", "ptr", "rate", "price"]));
-    setVal("map-col-mrp", findCol(["mrp", "sale", "selling"]));
-    setVal("map-col-gst", findCol(["gst", "tax"]));
-    setVal("map-col-qty", findCol(["qty", "quantity", "pcs", "bll", "nos"]));
-    setVal("map-col-sku", findCol(["sku", "code", "barcode", "ean"]));
-  }
+  const nameCol = findCol(["item description", "product description", "material description", "item name", "product name", "description", "particulars", "item", "product", "article", "goods", "desc", "title"]);
+  const hsnCol = findCol(["hsn sac", "hsn code", "hsncode", "hsn", "sac", "tariff"]);
+  const costCol = findCol(["billing rate", "basic rate", "purchase rate", "unit rate", "buy rate", "purchase price", "taxable value", "ptr", "rlp", "basic", "cost", "rate"]);
+  const mrpCol = findCol(["mrp", "sale rate", "selling price", "sale price", "retail price", "list price", "consumer price"]);
+  const gstCol = findCol(["gst rate", "gst percentage", "tax rate", "tax percentage", "cgst sgst", "gst", "tax", "vat", "igst"]);
+  const qtyCol = findCol(["billed qty", "billing qty", "inv qty", "quantity", "billed quantity", "qty", "pcs", "cases", "ea", "cs", "boxes", "nos", "count", "units"]);
+  const skuCol = findCol(["ean code", "material code", "item code", "article code", "code", "barcode", "ean", "sku", "upc", "gtin"]);
+
+  setVal("map-col-name", nameCol);
+  setVal("map-col-hsn", hsnCol);
+  setVal("map-col-cost", costCol);
+  setVal("map-col-mrp", mrpCol);
+  setVal("map-col-gst", gstCol);
+  setVal("map-col-qty", qtyCol);
+  setVal("map-col-sku", skuCol);
 }
 
 function setVal(id, val) {
