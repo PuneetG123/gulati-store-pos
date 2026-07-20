@@ -3230,21 +3230,36 @@ async function readDistributorPdf(file) {
       const typedarray = new Uint8Array(e.target.result);
       const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
       
-      let allItems = [];
+      let fullTextLines = [];
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         
+        // Group items on the same horizontal line (tolerance 4px)
+        const itemsByY = {};
         textContent.items.forEach(item => {
           const str = item.str ? item.str.trim() : "";
           if (!str) return;
-          const x = item.transform[4];
           const y = item.transform[5];
-          allItems.push({ str, x, y, page: i });
+          const x = item.transform[4];
+          let matchedY = Object.keys(itemsByY).find(keyY => Math.abs(parseFloat(keyY) - y) <= 4);
+          if (!matchedY) {
+            matchedY = y.toString();
+            itemsByY[matchedY] = [];
+          }
+          itemsByY[matchedY].push({ str, x });
+        });
+
+        // Sort rows top to bottom
+        const sortedY = Object.keys(itemsByY).sort((a, b) => parseFloat(b) - parseFloat(a));
+        sortedY.forEach(y => {
+          const lineItems = itemsByY[y].sort((a, b) => a.x - b.x);
+          const lineStr = lineItems.map(it => it.str).join(" ").trim();
+          if (lineStr) fullTextLines.push(lineStr);
         });
       }
 
-      parseStructuredPdfTable(allItems);
+      parseDistributorPdfLines(fullTextLines);
     } catch (err) {
       console.error("Failed to parse PDF invoice:", err);
       alert("Could not read PDF invoice. Please ensure it is a text-based PDF invoice or try exporting as Excel/CSV.");
@@ -3253,106 +3268,39 @@ async function readDistributorPdf(file) {
   reader.readAsArrayBuffer(file);
 }
 
-function parseStructuredPdfTable(allItems) {
-  const rowsByY = {};
-  allItems.forEach(item => {
-    let matchedY = Object.keys(rowsByY).find(y => Math.abs(parseFloat(y) - item.y) <= 4);
-    if (!matchedY) {
-      matchedY = item.y.toString();
-      rowsByY[matchedY] = [];
-    }
-    rowsByY[matchedY].push(item);
-  });
-
-  const sortedYKeys = Object.keys(rowsByY).sort((a, b) => parseFloat(b) - parseFloat(a));
-  
-  let headerY = null;
-  let headerRowItems = [];
-  for (const y of sortedYKeys) {
-    const rowStr = rowsByY[y].map(it => it.str).join(" ").toLowerCase();
-    if (rowStr.includes("desc") || rowStr.includes("item") || rowStr.includes("particular") || rowStr.includes("hsn") || rowStr.includes("qty") || rowStr.includes("rate") || rowStr.includes("mrp")) {
-      headerY = y;
-      headerRowItems = rowsByY[y].sort((a, b) => a.x - b.x);
-      break;
-    }
-  }
-
-  distributorHeaders = [];
+function parseDistributorPdfLines(lines) {
+  distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
   distributorParsedRows = [];
 
-  if (!headerY || headerRowItems.length < 2) {
-    distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
-    parseFallbackPdfLines(sortedYKeys, rowsByY);
-    return;
-  }
-
-  const colBounds = headerRowItems.map((hdr, idx) => {
-    const title = hdr.str.trim();
-    const minX = hdr.x - 15;
-    const nextHdr = headerRowItems[idx + 1];
-    const maxX = nextHdr ? (hdr.x + nextHdr.x) / 2 : 2000;
-    return { title, minX, maxX };
-  });
-
-  distributorHeaders = colBounds.map(c => c.title);
-
-  const headerYFloat = parseFloat(headerY);
-  sortedYKeys.forEach(y => {
-    const yFloat = parseFloat(y);
-    if (yFloat >= headerYFloat) return;
-
-    const rowItems = rowsByY[y];
-    const rowLineStr = rowItems.map(it => it.str).join(" ").toLowerCase();
-    if (rowLineStr.includes("total") || rowLineStr.includes("subtotal") || rowLineStr.includes("bank") || rowLineStr.includes("terms") || rowLineStr.includes("gstin") || rowLineStr.length < 3) {
+  lines.forEach(line => {
+    // Skip invoice header/footer meta lines
+    const lower = line.toLowerCase();
+    if (lower.includes("invoice") || lower.includes("subtotal") || lower.includes("grand total") || lower.includes("bank details") || lower.includes("terms & conditions") || lower.includes("gstin") || line.length < 5) {
       return;
     }
 
-    const rowObj = {};
-    distributorHeaders.forEach(h => rowObj[h] = "");
-
-    rowItems.forEach(item => {
-      const col = colBounds.find(c => item.x >= c.minX && item.x < c.maxX);
-      if (col) {
-        rowObj[col.title] = (rowObj[col.title] + " " + item.str).trim();
-      }
-    });
-
-    const hasData = Object.values(rowObj).some(val => val.length >= 2);
-    if (hasData) {
-      distributorParsedRows.push(rowObj);
-    }
-  });
-
-  populateColumnMappers();
-  applyDistributorPreset("auto");
-  generateDistributorPreview();
-
-  document.getElementById("distributor-mapping-section").style.display = "block";
-  document.getElementById("distributor-preview-container").style.display = "block";
-}
-
-function parseFallbackPdfLines(sortedYKeys, rowsByY) {
-  sortedYKeys.forEach(y => {
-    const lineItems = rowsByY[y].sort((a, b) => a.x - b.x);
-    const line = lineItems.map(it => it.str).join(" ").trim();
-    const lower = line.toLowerCase();
-    if (lower.includes("invoice") || lower.includes("subtotal") || lower.includes("grand total") || lower.includes("bank") || lower.includes("terms") || lower.includes("gstin") || line.length < 5) return;
-
+    // Match numbers in line (HSN, Qty, Rate, MRP, GST)
     const numbers = line.match(/\d+(\.\d+)?/g);
     if (!numbers || numbers.length < 2) return;
 
+    // Extract Product Name (text before numbers)
     const nameMatch = line.match(/^[a-zA-Z0-9\s\-\.&\(\)\/]+/);
     if (!nameMatch || nameMatch[0].trim().length < 3) return;
 
     const name = nameMatch[0].replace(/^\d+\s*/, '').trim();
     if (name.length < 3 || lower.includes("page") || lower.includes("total")) return;
 
+    // Detect HSN Code (4, 6, 8 digits)
     let hsn = "2106";
     const hsnMatch = line.match(/\b(040\d|190\d|110\d|151\d|220\d|340\d|180\d|250\d|\d{4}|\d{6}|\d{8})\b/);
     if (hsnMatch) hsn = hsnMatch[0];
 
+    // Detect Prices and Quantities
     const floatVals = numbers.map(n => parseFloat(n)).filter(n => !isNaN(n));
-    let costPrice = 0, sellingPrice = 0, gstSlab = 18, qty = 1;
+    let costPrice = 0;
+    let sellingPrice = 0;
+    let gstSlab = 18;
+    let qty = 1;
 
     floatVals.forEach(val => {
       if (val === 5 || val === 12 || val === 18 || val === 28) gstSlab = val;
