@@ -3110,7 +3110,15 @@ function generateDistributorPreview() {
       hsn,
       costPrice,
       sellingPrice,
-      gstSlfunction renderDistributorPreviewTable() {
+      gstSlab,
+      qty
+    });
+  });
+
+  renderDistributorPreviewTable();
+}
+
+function renderDistributorPreviewTable() {
   const tbody = document.getElementById("distributor-preview-tbody");
   tbody.innerHTML = "";
 
@@ -3372,5 +3380,4 @@ function parseFallbackPdfLines(sortedYKeys, rowsByY) {
 
   document.getElementById("distributor-mapping-section").style.display = "block";
   document.getElementById("distributor-preview-container").style.display = "block";
-}ElementById("distributor-preview-container").style.display = "block";
 }
