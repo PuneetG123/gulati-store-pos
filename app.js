@@ -2905,6 +2905,98 @@ function formatRupeeText(val) {
 let distributorFileData = null;
 let distributorHeaders = [];
 let distributorParsedRows = [];
+let customDistributorTemplates = JSON.parse(localStorage.getItem("fc_distributor_templates") || "[]");
+
+function renderDistributorTemplateOptions() {
+  const select = document.getElementById("distributor-preset-select");
+  if (!select) return;
+
+  const currentVal = select.value;
+  select.innerHTML = `<option value="auto">⚡ Auto-Detect Column Headers</option>`;
+
+  if (customDistributorTemplates.length > 0) {
+    const optGroup = document.createElement("optgroup");
+    optGroup.label = "⭐ Your Saved Custom Templates";
+    customDistributorTemplates.forEach((tpl, idx) => {
+      const opt = document.createElement("option");
+      opt.value = `custom_${idx}`;
+      opt.innerText = `⭐ ${tpl.name}`;
+      optGroup.appendChild(opt);
+    });
+    select.appendChild(optGroup);
+  }
+
+  const factoryGroup = document.createElement("optgroup");
+  factoryGroup.label = "🏢 Company Presets";
+  [
+    { val: 'itc', text: 'ITC Limited Invoice' },
+    { val: 'nestle', text: 'Nestlé India Invoice' },
+    { val: 'hul', text: 'Hindustan Unilever (HUL) Invoice' },
+    { val: 'britannia', text: 'Britannia Industries Invoice' },
+    { val: 'parle', text: 'Parle Products Invoice' },
+    { val: 'amul', text: 'Amul / GCMMF Invoice' },
+    { val: 'dabur', text: 'Dabur India Invoice' },
+    { val: 'tally', text: 'Tally / Marg / Vyapar ERP Export' }
+  ].forEach(preset => {
+    const opt = document.createElement("option");
+    opt.value = preset.val;
+    opt.innerText = preset.text;
+    factoryGroup.appendChild(opt);
+  });
+  select.appendChild(factoryGroup);
+
+  if (currentVal) select.value = currentVal;
+}
+
+function setupTemplateManager() {
+  renderDistributorTemplateOptions();
+
+  const openBtn = document.getElementById("open-template-manager-btn");
+  const modal = document.getElementById("bill-template-modal");
+  const closeBtn = document.getElementById("template-modal-close");
+  const cancelBtn = document.getElementById("template-modal-cancel");
+  const form = document.getElementById("custom-template-form");
+
+  if (!openBtn || !modal) return;
+
+  openBtn.addEventListener("click", () => {
+    modal.classList.add("active");
+    form.reset();
+  });
+
+  const closeModal = () => modal.classList.remove("active");
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const tpl = {
+      name: document.getElementById("tpl-name").value.trim(),
+      hdrName: document.getElementById("tpl-hdr-name").value.trim(),
+      hdrHsn: document.getElementById("tpl-hdr-hsn").value.trim(),
+      hdrCost: document.getElementById("tpl-hdr-cost").value.trim(),
+      hdrMrp: document.getElementById("tpl-hdr-mrp").value.trim(),
+      hdrGst: document.getElementById("tpl-hdr-gst").value.trim(),
+      hdrQty: document.getElementById("tpl-hdr-qty").value.trim(),
+      hdrSku: document.getElementById("tpl-hdr-sku").value.trim()
+    };
+
+    customDistributorTemplates.push(tpl);
+    localStorage.setItem("fc_distributor_templates", JSON.stringify(customDistributorTemplates));
+    renderDistributorTemplateOptions();
+
+    const newIdx = customDistributorTemplates.length - 1;
+    document.getElementById("distributor-preset-select").value = `custom_${newIdx}`;
+    
+    if (distributorHeaders.length > 0) {
+      applyDistributorPreset(`custom_${newIdx}`);
+      generateDistributorPreview();
+    }
+
+    modal.classList.remove("active");
+    alert(`SUCCESS! Saved template '${tpl.name}'. You can now select it whenever uploading bills from this supplier.`);
+  });
+}
 
 function setupDistributorBillImporter() {
   const openBtn = document.getElementById("inv-distributor-bill-btn");
@@ -2914,6 +3006,8 @@ function setupDistributorBillImporter() {
   const fileInput = document.getElementById("distributor-file-input");
   const presetSelect = document.getElementById("distributor-preset-select");
   const processBtn = document.getElementById("distributor-process-btn");
+
+  setupTemplateManager();
 
   if (!openBtn || !modal) return;
 
