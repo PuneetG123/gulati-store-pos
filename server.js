@@ -131,8 +131,14 @@ function createSqliteTables() {
       phone TEXT,
       type TEXT,
       amount REAL,
-      ref TEXT
+      ref TEXT,
+      attachmentData TEXT,
+      attachmentName TEXT
     )`);
+
+    // Dynamic schema migrations for existing databases
+    sqliteDb.run("ALTER TABLE customer_ledger ADD COLUMN attachmentData TEXT", [], () => {});
+    sqliteDb.run("ALTER TABLE customer_ledger ADD COLUMN attachmentName TEXT", [], () => {});
 
     sqliteDb.run(`CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -194,7 +200,9 @@ async function createPostgresTables() {
         date TEXT,
         type TEXT,
         amount REAL,
-        ref TEXT
+        ref TEXT,
+        "attachmentData" TEXT,
+        "attachmentName" TEXT
       );
 
       CREATE TABLE IF NOT EXISTS settings (
@@ -211,6 +219,10 @@ async function createPostgresTables() {
       );
     `);
     
+    // Dynamic Postgres schema migration
+    try { await pgPool.query('ALTER TABLE customer_ledger ADD COLUMN "attachmentData" TEXT'); } catch(e) {}
+    try { await pgPool.query('ALTER TABLE customer_ledger ADD COLUMN "attachmentName" TEXT'); } catch(e) {}
+
     await pgPool.query("INSERT INTO settings (key, value) VALUES ('pin', '1234') ON CONFLICT (key) DO NOTHING");
     await pgPool.query("INSERT INTO settings (key, value) VALUES ('printer_name', 'Default') ON CONFLICT (key) DO NOTHING");
     await pgPool.query("INSERT INTO settings (key, value) VALUES ('auto_print', 'false') ON CONFLICT (key) DO NOTHING");
@@ -397,8 +409,8 @@ app.post('/api/save', authenticateToken, async (req, res) => {
       await dbRun("DELETE FROM customer_ledger");
       for (const l of ledgerEntries) {
         await dbRun(
-          "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, ?, ?, ?)",
-          [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone, l.date, l.type, l.amount, l.ref]
+          "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone, l.date, l.type, l.amount, l.ref, l.attachmentData || null, l.attachmentName || null]
         );
       }
     } catch (e) {
