@@ -759,6 +759,19 @@ window.updateCartItemQtyDirectly = function(sku, value) {
   renderPOSCart();
 };
 
+window.updateCartItemPriceDirectly = function(sku, value) {
+  const cartItem = state.cart.find(item => item.product.sku === sku);
+  if (!cartItem) return;
+
+  let price = parseFloat(value);
+  if (isNaN(price) || price < 0) {
+    price = 0;
+  }
+
+  cartItem.product.sellingPrice = price;
+  renderPOSCart();
+};
+
 function deleteCartItem(sku) {
   state.cart = state.cart.filter(item => item.product.sku !== sku);
   renderPOSCart();
@@ -802,9 +815,10 @@ function renderPOSCart() {
 
     const step = item.product.unit === 'kg' ? 0.1 : 1;
 
-    let priceDetails = `${formatRupee(item.product.sellingPrice)} per ${item.product.unit || 'pcs'} &bull; GST ${parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0)}%`;
+    // Price input box to dynamically change sellingPrice
+    let priceDetails = `₹<input type="number" class="price-input-box" value="${item.product.sellingPrice.toFixed(2)}" step="0.01" style="width:75px; text-align:center; background:var(--bg-main); border:1px solid var(--border-color); border-radius:4px; font-size:12px; color:var(--text-primary); font-weight:600; padding:2px; display:inline-block;" onchange="window.updateCartItemPriceDirectly('${item.product.sku || item.product.id}', this.value)"> per ${item.product.unit || 'pcs'} &bull; GST ${parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0)}%`;
     if (discountPct > 0) {
-      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit || 'pcs'} <span style="text-decoration:line-through; font-size:11px; color:var(--text-muted); margin-left:4px;">${formatRupee(item.product.sellingPrice)}</span> <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0)}%`;
+      priceDetails = `<span style="color:var(--success); font-weight:700;">${formatRupee(netUnitPrice)}</span> per ${item.product.unit || 'pcs'} (Base: ₹<input type="number" class="price-input-box" value="${item.product.sellingPrice.toFixed(2)}" step="0.01" style="width:75px; text-align:center; background:var(--bg-main); border:1px solid var(--border-color); border-radius:4px; font-size:12px; color:var(--text-primary); font-weight:600; padding:2px; display:inline-block;" onchange="window.updateCartItemPriceDirectly('${item.product.sku || item.product.id}', this.value)">) <span class="badge badge-success" style="font-size:10px; padding:1px 4px; margin-left:4px;">${discountPct}% off</span> &bull; GST ${parseFloat(item.product.gstSlab ?? item.product.gstRate ?? 0)}%`;
     }
 
     const div = document.createElement("div");
@@ -1038,6 +1052,11 @@ function checkoutCart() {
       const realProduct = state.products.find(p => p.sku === item.product.sku);
       if (realProduct) {
         realProduct.stock = Math.max(0, realProduct.stock - item.quantity);
+        // Sync modified price to inventory database!
+        if (realProduct.sellingPrice !== item.product.sellingPrice) {
+          realProduct.sellingPrice = item.product.sellingPrice;
+          console.log(`Updated inventory price of ${realProduct.name} to ₹${realProduct.sellingPrice}`);
+        }
       }
     }
   });
