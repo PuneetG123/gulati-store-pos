@@ -3350,7 +3350,12 @@ async function readDistributorPdf(file) {
     return;
   }
 
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  // Safe loading of PDF worker to avoid CORS security policy blocks
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  } catch (err) {
+    console.warn("Could not set external PDF worker, falling back to main-thread rendering:", err);
+  }
 
   const reader = new FileReader();
   reader.onload = async function(e) {
@@ -3382,23 +3387,36 @@ async function readDistributorPdf(file) {
 }
 
 function parseStructuredPdfTable(allItems) {
-  // 1. Group items on the same horizontal line (tolerance +/- 4px)
-  const rowsByY = {};
-  allItems.forEach(item => {
-    let matchedY = Object.keys(rowsByY).find(y => Math.abs(parseFloat(y) - item.y) <= 4);
-    if (!matchedY) {
-      matchedY = item.y.toString();
-      rowsByY[matchedY] = [];
-    }
-    rowsByY[matchedY].push(item);
-  });
+  if (!allItems || allItems.length === 0) return;
 
-  const sortedYKeys = Object.keys(rowsByY).sort((a, b) => parseFloat(b) - parseFloat(a));
+  // 1. Group items on the same horizontal line using running average Y with 8px tolerance
+  const sortedItemsByY = allItems.slice().sort((a, b) => b.y - a.y); // top to bottom
+  const rows = [];
+  let currentRow = [];
+
+  sortedItemsByY.forEach(item => {
+    if (currentRow.length === 0) {
+      currentRow.push(item);
+    } else {
+      const avgY = currentRow.reduce((sum, it) => sum + it.y, 0) / currentRow.length;
+      if (Math.abs(item.y - avgY) <= 8) {
+        currentRow.push(item);
+      } else {
+        rows.push(currentRow);
+        currentRow = [item];
+      }
+    }
+  });
+  if (currentRow.length > 0) {
+    rows.push(currentRow);
+  }
+
+  // Sort items in each row left-to-right
+  rows.forEach(r => r.sort((a, b) => a.x - b.x));
 
   // 2. Identify Product Data Rows
-  const dataRowsY = [];
-  sortedYKeys.forEach(y => {
-    const rowItems = rowsByY[y].sort((a, b) => a.x - b.x);
+  const dataRows = [];
+  rows.forEach(rowItems => {
     // Find the first non-empty text item
     const firstItem = rowItems.find(it => it.str.trim() !== "");
     if (!firstItem) return;
@@ -3425,21 +3443,68 @@ function parseStructuredPdfTable(allItems) {
     const hasManyCols = rowItems.length >= 5;
 
     if ((hasHsn || hasManyCols) && numericCount >= 2) {
-      dataRowsY.push(y);
+      dataRows.push(rowItems);
     }
   });
 
-  if (dataRowsY.length === 0) {
-    // Fallback if no structured data rows found
+  if (dataRows.length === 0) {
+    // Fallback to basic line extraction if no structured data rows matched
     distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
-    parseFallbackPdfLines(sortedYKeys, rowsByY);
+    distributorParsedRows = [];
+    rows.forEach(rowItems => {
+      const line = rowItems.map(it => it.str).join(" ").trim();
+      const lower = line.toLowerCase();
+      if (lower.includes("invoice") || lower.includes("subtotal") || lower.includes("grand total") || lower.includes("bank") || lower.includes("terms") || lower.includes("gstin") || line.length < 5) return;
+
+      const numbers = line.match(/\d+(\.\d+)?/g);
+      if (!numbers || numbers.length < 2) return;
+
+      const nameMatch = line.match(/^[a-zA-Z0-9\s\-\.&\(\)\/]+/);
+      if (!nameMatch || nameMatch[0].trim().length < 3) return;
+
+      const name = nameMatch[0].replace(/^\d+\s*/, '').trim();
+      if (name.length < 3 || lower.includes("page") || lower.includes("total")) return;
+
+      let hsn = "2106";
+      const hsnMatch = line.match(/\b(040\d|190\d|110\d|151\d|220\d|340\d|180\d|250\d|\d{4}|\d{6}|\d{8})\b/);
+      if (hsnMatch) hsn = hsnMatch[0];
+
+      const floatVals = numbers.map(n => parseFloat(n)).filter(n => !isNaN(n));
+      let costPrice = 0, sellingPrice = 0, gstSlab = 18, qty = 1;
+
+      floatVals.forEach(val => {
+        if (val === 5 || val === 12 || val === 18 || val === 28) gstSlab = val;
+        else if (val > 10 && val < 5000 && costPrice === 0) costPrice = val;
+        else if (val > costPrice && val < 6000 && sellingPrice === 0) sellingPrice = val;
+        else if (val >= 1 && val <= 500 && qty === 1 && val !== costPrice && val !== sellingPrice) qty = val;
+      });
+
+      if (sellingPrice === 0) sellingPrice = costPrice;
+
+      distributorParsedRows.push({
+        "Item Description": name,
+        "HSN Code": hsn,
+        "Basic Rate": costPrice.toString(),
+        "MRP": sellingPrice.toString(),
+        "GST %": gstSlab.toString(),
+        "Billed Qty": qty.toString(),
+        "Item Code": `PDF_${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+      });
+    });
+
+    populateColumnMappers();
+    applyDistributorPreset("auto");
+    generateDistributorPreview();
+
+    document.getElementById("distributor-mapping-section").style.display = "block";
+    document.getElementById("distributor-preview-container").style.display = "block";
     return;
   }
 
   // 3. Cluster X Coordinates to Identify Column Channels
   const allXCoordinates = [];
-  dataRowsY.forEach(y => {
-    rowsByY[y].forEach(item => {
+  dataRows.forEach(rowItems => {
+    rowItems.forEach(item => {
       allXCoordinates.push(item.x);
     });
   });
@@ -3453,44 +3518,39 @@ function parseStructuredPdfTable(allItems) {
       columnClusters.push(cluster);
     }
     cluster.values.push(x);
-    // Recalculate average center
     cluster.center = cluster.values.reduce((sum, v) => sum + v, 0) / cluster.values.length;
   });
 
-  // Sort columns left-to-right
   columnClusters.sort((a, b) => a.center - b.center);
 
-  // 4. Find Header Y Coordinates (all Y lines above first data row Y)
-  const firstDataY = parseFloat(dataRowsY[0]);
-  const headerLinesY = sortedYKeys.filter(y => parseFloat(y) > firstDataY && parseFloat(y) < firstDataY + 150);
-
+  // 4. Find Header Y Coordinates (above first data row)
+  const firstDataY = dataRows[0][0].y;
+  
   // Reconstruct column header names by collecting text items near each column cluster center
   distributorHeaders = columnClusters.map((col, colIdx) => {
     let titleParts = [];
-    headerLinesY.forEach(y => {
-      rowsByY[y].forEach(item => {
-        // If the item aligns horizontally with this column center
-        if (Math.abs(item.x - col.center) < 25) {
-          titleParts.push({ str: item.str.trim(), y: parseFloat(y) });
+    rows.forEach(rowItems => {
+      rowItems.forEach(item => {
+        if (item.y > firstDataY && item.y < firstDataY + 150) {
+          if (Math.abs(item.x - col.center) < 25) {
+            titleParts.push({ str: item.str.trim(), y: item.y });
+          }
         }
       });
     });
 
-    // Sort top-to-bottom
     titleParts.sort((a, b) => b.y - a.y);
     const title = titleParts.map(p => p.str).join(" ").trim();
     return title || `Column ${colIdx + 1}`;
   });
 
-  // 5. Reconstruct Data Rows by aligning text items to nearest column channel
+  // 5. Reconstruct Data Rows
   distributorParsedRows = [];
-  dataRowsY.forEach(y => {
-    const rowItems = rowsByY[y];
+  dataRows.forEach(rowItems => {
     const rowObj = {};
     distributorHeaders.forEach(h => rowObj[h] = "");
 
     rowItems.forEach(item => {
-      // Find closest column channel center
       let closestColIdx = 0;
       let minDiff = Infinity;
       columnClusters.forEach((col, idx) => {
@@ -3502,7 +3562,6 @@ function parseStructuredPdfTable(allItems) {
       });
 
       const colName = distributorHeaders[closestColIdx];
-      // Concatenate values belonging to the same column (like multi-word item name)
       rowObj[colName] = (rowObj[colName] + " " + item.str).trim();
     });
 
