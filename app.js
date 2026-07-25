@@ -3399,17 +3399,32 @@ function parseStructuredPdfTable(allItems) {
   const dataRowsY = [];
   sortedYKeys.forEach(y => {
     const rowItems = rowsByY[y].sort((a, b) => a.x - b.x);
-    if (rowItems.length < 3) return;
+    // Find the first non-empty text item
+    const firstItem = rowItems.find(it => it.str.trim() !== "");
+    if (!firstItem) return;
 
-    // First item should be a number (SN) at X < 55
-    const snStr = rowItems[0].str.trim();
+    // SN Check: First item must be an integer between 1 and 150, starting in leftmost 120px
+    const snStr = firstItem.str.trim();
     const snNum = parseInt(snStr);
-    const isSn = !isNaN(snNum) && snNum > 0 && snNum < 100 && rowItems[0].x < 55;
+    const isSn = !isNaN(snNum) && snNum > 0 && snNum < 150 && firstItem.x < 120;
     
-    // Check if the row contains an HSN code (typically a 4-8 digit number)
-    const hasHsn = rowItems.some(it => /^\d{4,8}$/.test(it.str.trim()));
+    if (!isSn) return;
 
-    if (isSn && hasHsn) {
+    // Row must contain at least 2 numbers (like Qty, Rate, HSN, etc.)
+    const numericCount = rowItems.filter(it => {
+      const val = parseFloat(it.str.replace(/[^0-9.]/g, ''));
+      return !isNaN(val) && val > 0;
+    }).length;
+
+    // Check if the row contains an HSN code (typically a 4-8 digit number)
+    const hasHsn = rowItems.some(it => {
+      const cleanStr = it.str.trim().replace(/\s/g, '');
+      return /^\d{4,8}$/.test(cleanStr);
+    });
+
+    const hasManyCols = rowItems.length >= 5;
+
+    if ((hasHsn || hasManyCols) && numericCount >= 2) {
       dataRowsY.push(y);
     }
   });
