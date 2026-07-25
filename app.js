@@ -1335,52 +1335,88 @@ function setupInventoryActions() {
       let gst = "";
 
       // Smart pattern matching for common Indian packaged goods / FMCG
-      if (/\b(soap|bath|body wash|cinthol|dettol|lifebuoy|dove|lux|pears|godrej no\.? 1|santoor|liril)\b/.test(nameVal)) {
+      if (/\b(soap|bath|body wash|cinthol|dettol|lifebuoy|dove|lux|pears|godrej no\.? 1|santoor|liril|savlon|fiama|handwash|hand wash)\b/.test(nameVal)) {
         hsn = "3401";
         gst = "18";
-      } else if (/\b(shampoo|hair oil|conditioner|parachute|clinic plus|pantene|sunsilk|almond drop|hair color|dye)\b/.test(nameVal)) {
+      } else if (/\b(shampoo|hair oil|conditioner|parachute|clinic plus|pantene|sunsilk|almond drop|hair color|dye|garnier|loreal|haircream)\b/.test(nameVal)) {
         hsn = "3305";
         gst = "18";
-      } else if (/\b(toothpaste|brush|colgate|sensodyne|pepsodent|close up|dabur red|oral)\b/.test(nameVal)) {
+      } else if (/\b(toothpaste|brush|colgate|sensodyne|pepsodent|close up|dabur red|oral|toothbrush|dant|dentobac|meswak)\b/.test(nameVal)) {
         hsn = "3306";
         gst = "18";
-      } else if (/\b(detergent|wash|powder|surf|wheel|tide|ariel|vim|rin|harpic|lizol|cleaner|phenyle|comfort)\b/.test(nameVal)) {
+      } else if (/\b(detergent|wash|powder|surf|wheel|tide|ariel|vim|rin|harpic|lizol|cleaner|phenyle|comfort|colin|phenyl|acid|bleach|scrub|ezee|safewash)\b/.test(nameVal)) {
         hsn = "3402";
         gst = "18";
-      } else if (/\b(biscuit|cookie|marie|gold|parle|britannia|crackjack|monaco|oreo|hide seek|rusk|hide \& seek)\b/.test(nameVal)) {
+      } else if (/\b(agarbatti|dhoop|incense|camphor|kapoor|pooja|havan|samagri|cotton wicks|mangaldeep|cycle agarbatti)\b/.test(nameVal)) {
+        hsn = "3307";
+        gst = "5";
+      } else if (/\b(good knight|goodknight|hit|mortein|all out|allout|mosquito|repellent|coil|insecticide|pest|spray)\b/.test(nameVal)) {
+        hsn = "3808";
+        gst = "18";
+      } else if (/\b(stayfree|stay free|whisper|sofy|sanitary|napkin|pad|pads)\b/.test(nameVal)) {
+        hsn = "9619";
+        gst = "0"; // Sanitary pads are tax-exempt (0% GST) in India
+      } else if (/\b(diaper|diapers|pampers|huggies|mamypoko|mamy poko|baby wipe|baby wipes)\b/.test(nameVal)) {
+        hsn = "9619";
+        gst = "18";
+      } else if (/\b(cola|coke|pepsi|sprite|fanta|thums up|thumsup|limca|dew|soda|aerated|soft drink|carbonated|maaza|frooti|slice|tropicana|real juice|real|juice|juices|drink|drinks|paper boat|b-natural|bnatural)\b/.test(nameVal)) {
+        // Distinguish fruit juice (12%) from aerated carbonated beverages (28%)
+        if (/\b(juice|juices|real|tropicana|maaza|frooti|slice|mango drink|paper boat|b-natural|bnatural)\b/.test(nameVal)) {
+          hsn = "2202";
+          gst = "12"; // Fruit pulp beverages / Juices
+        } else {
+          hsn = "2202";
+          gst = "28"; // Sodas / Aerated soft drinks
+        }
+      } else if (/\b(water|mineral water|bisleri|kinley|aquafina|aquasure|himalayan)\b/.test(nameVal)) {
+        hsn = "2201";
+        gst = "18";
+      } else if (/\b(sauce|ketchup|jam|mayonnaise|spread|kissans|kissan|shezwan|chutney|vinegar|soya sauce|chilli sauce)\b/.test(nameVal)) {
+        hsn = "2103";
+        gst = "18";
+      } else if (/\b(pickle|pickles|achar|achari)\b/.test(nameVal)) {
+        hsn = "2001";
+        gst = "12";
+      } else if (/\b(biscuit|cookie|cookies|marie|gold|parle|britannia|crackjack|monaco|oreo|hide seek|rusk|hide \& seek|unibic|sunfeast|moms magic)\b/.test(nameVal)) {
         hsn = "1905";
         gst = "18";
-      } else if (/\b(chocolate|cadbury|dairy milk|kitkat|munch|perk|5 star|snickers|choco|milkybar)\b/.test(nameVal)) {
+      } else if (/\b(chocolate|cadbury|dairy milk|kitkat|munch|perk|5 star|fivestar|snickers|choco|milkybar|eclairs|melody|cough drop|lozenge|candy|candies|gems)\b/.test(nameVal)) {
         hsn = "1806";
         gst = "18";
-      } else if (/\b(noodle|maggi|yippee|pasta|macaroni|knorr|soup|vermicelli)\b/.test(nameVal)) {
+      } else if (/\b(noodle|noodles|maggi|yippee|pasta|macaroni|knorr|soup|vermicelli|chowmein|ramen)\b/.test(nameVal)) {
         hsn = "1902";
         gst = "18";
-      } else if (/\b(chips|lays|kurkure|namkeen|bhujia|bingo|snack|puff|popcorn|mixture|sev)\b/.test(nameVal)) {
+      } else if (/\b(chips|lays|kurkure|namkeen|bhujia|bingo|snack|puff|popcorn|mixture|sev|gathiya|murukku|aloo bhujia|chana chur)\b/.test(nameVal)) {
         hsn = "2106";
         gst = "12";
-      } else if (/\b(ghee|butter|amul|mother dairy|paneer|cheese)\b/.test(nameVal)) {
+      } else if (/\b(ghee|butter|amul|mother dairy|paneer|cheese|cream)\b/.test(nameVal)) {
         hsn = "0405";
         gst = "12";
-      } else if (/\b(mustard oil|fortune oil|refined oil|soya oil|canola oil|rice bran|safola|edible oil)\b/.test(nameVal)) {
+      } else if (/\b(mustard oil|fortune oil|refined oil|soya oil|canola oil|rice bran|safola|edible oil|coconut oil|dhara|saffola|oil|oils)\b/.test(nameVal)) {
         hsn = "1512";
         gst = "5";
-      } else if (/\b(tea|coffee|nescafe|bru|red label|taj mahal|tata tea|taj)\b/.test(nameVal)) {
+      } else if (/\b(tea|coffee|nescafe|bru|red label|taj mahal|tata tea|taj|ctc|dust|filter coffee)\b/.test(nameVal)) {
         hsn = "0902";
         gst = "5";
-      } else if (/\b(spice|masala|haldi|mirch|dhaniya|turmeric|chilli|mdh|everest|catch|powder)\b/.test(nameVal)) {
+      } else if (/\b(spice|masala|haldi|mirch|dhaniya|turmeric|chilli|mdh|everest|catch|powder|cardamom|elaichi|jeera|cumin|mustard seeds|sarso|methi|clove)\b/.test(nameVal)) {
         hsn = "0910";
         gst = "5";
+      } else if (/\b(honey|dabur honey|patanjali honey)\b/.test(nameVal)) {
+        hsn = "0409";
+        gst = "5";
+      } else if (/\b(papad|lijjat)\b/.test(nameVal)) {
+        hsn = "1905";
+        gst = "0";
       } else if (/\b(salt|tata salt)\b/.test(nameVal)) {
         hsn = "2501";
         gst = "0";
-      } else if (/\b(atta|flour|maida|suji|besan|ashirvaad)\b/.test(nameVal)) {
+      } else if (/\b(atta|flour|maida|suji|besan|ashirvaad|aata|wheat flour)\b/.test(nameVal)) {
         hsn = "1101";
         gst = "5";
-      } else if (/\b(rice|basmati|puls|dal|moong|chana|rajma|pulses|urad|arhar)\b/.test(nameVal)) {
+      } else if (/\b(rice|basmati|puls|dal|moong|chana|rajma|pulses|urad|arhar|masoor|toor|kabuli)\b/.test(nameVal)) {
         hsn = "1006";
         gst = "5";
-      } else if (/\b(sugar|chini)\b/.test(nameVal)) {
+      } else if (/\b(sugar|chini|shakkar|jaggery|gur)\b/.test(nameVal)) {
         hsn = "1701";
         gst = "5";
       }
