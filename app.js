@@ -3136,14 +3136,42 @@ let distributorActivePreviewRows = [];
 
 function applyDistributorPreset(presetKey) {
   const findCol = (keywords) => {
+    if (!keywords || keywords.length === 0) return "";
+    const activeKws = keywords.filter(k => k && k.trim() !== "");
+    if (activeKws.length === 0) return "";
+
+    // 1. Exact case-insensitive check first
+    for (const kw of activeKws) {
+      const target = kw.toLowerCase().trim();
+      const match = distributorHeaders.find(h => h.toLowerCase().trim() === target);
+      if (match) return match;
+    }
+
+    // 2. Fuzzy clean alphanumeric check
     return distributorHeaders.find(h => {
       const cleanHeader = h.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return keywords.some(k => {
+      return activeKws.some(k => {
         const cleanKw = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!cleanKw) return false;
         return cleanHeader.includes(cleanKw) || cleanKw.includes(cleanHeader);
       });
     }) || "";
   };
+
+  if (presetKey && presetKey.startsWith("custom_")) {
+    const idx = parseInt(presetKey.replace("custom_", ""));
+    const tpl = customDistributorTemplates[idx];
+    if (tpl) {
+      setVal("map-col-name", findCol([tpl.hdrName]));
+      setVal("map-col-hsn", findCol([tpl.hdrHsn]));
+      setVal("map-col-cost", findCol([tpl.hdrCost]));
+      setVal("map-col-mrp", findCol([tpl.hdrMrp]));
+      setVal("map-col-gst", findCol([tpl.hdrGst]));
+      setVal("map-col-qty", findCol([tpl.hdrQty]));
+      setVal("map-col-sku", findCol([tpl.hdrSku]));
+      return;
+    }
+  }
 
   const nameCol = findCol(["item description", "product description", "material description", "item name", "product name", "description", "particulars", "item", "product", "article", "goods", "desc", "title", "particular", "name"]);
   const hsnCol = findCol(["hsn sac", "hsn code", "hsncode", "hsn", "sac", "tariff"]);
@@ -3164,7 +3192,7 @@ function applyDistributorPreset(presetKey) {
 
 function setVal(id, val) {
   const el = document.getElementById(id);
-  if (el && val) el.value = val;
+  if (el) el.value = val || "";
 }
 
 function generateDistributorPreview() {
