@@ -641,6 +641,8 @@ function setupPOSCartActions() {
     const name = document.getElementById("quick-add-name").value.trim();
     const price = parseFloat(document.getElementById("quick-add-price").value);
     const gst = parseInt(document.getElementById("quick-add-gst").value);
+    const unitInput = document.getElementById("quick-add-unit");
+    const unit = unitInput ? unitInput.value : "pcs";
 
     if (!name || isNaN(price) || price <= 0) {
       alert("Please enter a valid Product Name and Price.");
@@ -664,7 +666,7 @@ function setupPOSCartActions() {
       gstSlab: gst,
       stock: 100, // seed initial stock
       reorderLevel: 5,
-      unit: "pcs",
+      unit: unit,
       discountPercent: 0
     };
 
