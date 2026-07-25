@@ -1545,10 +1545,10 @@ function renderInventory() {
 
 function saveProductForm() {
   const editSku = document.getElementById("prod-edit-id").value;
-  const sku = document.getElementById("prod-sku").value.trim();
+  let sku = document.getElementById("prod-sku").value.trim();
   const hsn = document.getElementById("prod-hsn").value.trim();
   const name = document.getElementById("prod-name").value.trim();
-  const category = document.getElementById("prod-category").value;
+  const category = "General FMCG";
   const unit = document.getElementById("prod-unit").value;
   const costPrice = parseFloat(document.getElementById("prod-cost").value);
   const sellingPrice = parseFloat(document.getElementById("prod-price").value);
@@ -1556,6 +1556,11 @@ function saveProductForm() {
   const stock = parseInt(document.getElementById("prod-stock").value);
   const reorderLevel = parseInt(document.getElementById("prod-reorder").value);
   const discountPercent = parseInt(document.getElementById("prod-discount").value) || 0;
+
+  if (!sku) {
+    // Automatically generate a unique local SKU if barcode is empty/optional
+    sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
+  }
 
   if (editSku) {
     // Edit existing product
@@ -1597,7 +1602,6 @@ window.editProduct = function(sku) {
   document.getElementById("prod-sku").disabled = true; // prevent editing barcode SKU directly
   document.getElementById("prod-hsn").value = prod.hsn || "";
   document.getElementById("prod-name").value = prod.name;
-  document.getElementById("prod-category").value = prod.category;
   document.getElementById("prod-unit").value = prod.unit;
   document.getElementById("prod-cost").value = prod.costPrice;
   document.getElementById("prod-price").value = prod.sellingPrice;
