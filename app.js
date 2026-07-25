@@ -1344,6 +1344,7 @@ function setupInventoryActions() {
 
   // Setup Distributor Bill Importer
   setupDistributorBillImporter();
+  setupPdfToExcelConverter();
 }
 
 function renderInventoryCategoriesFilter() {
@@ -2995,6 +2996,188 @@ function setupTemplateManager() {
 
     modal.classList.remove("active");
     alert(`SUCCESS! Saved template '${tpl.name}'. You can now select it whenever uploading bills from this supplier.`);
+  });
+}
+
+function setupPdfToExcelConverter() {
+  const btn = document.getElementById("inv-pdf-to-excel-btn");
+  if (!btn) return;
+
+  // Create dynamic file input if not exists
+  let fileInput = document.getElementById("pdf-to-excel-file-input");
+  if (!fileInput) {
+    fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.id = "pdf-to-excel-file-input";
+    fileInput.accept = ".pdf";
+    fileInput.style.display = "none";
+    document.body.appendChild(fileInput);
+  }
+
+  btn.addEventListener("click", () => {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (typeof pdfjsLib === 'undefined' || typeof XLSX === 'undefined') {
+      alert("Required libraries (PDF.js / SheetJS) are loading. Please wait a moment and try again.");
+      return;
+    }
+
+    btn.innerText = "Converting PDF...";
+    btn.disabled = true;
+
+    try {
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      } catch (err) {
+        console.warn("Could not set external PDF worker:", err);
+      }
+
+      const fileReader = new FileReader();
+      fileReader.onload = async function(evt) {
+        try {
+          const typedarray = new Uint8Array(evt.target.result);
+          const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+          
+          let allItems = [];
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            textContent.items.forEach(item => {
+              const str = item.str ? item.str.trim() : "";
+              if (!str) return;
+              const x = item.transform[4];
+              const y = item.transform[5];
+              allItems.push({ str, x, y, page: i });
+            });
+          }
+
+          if (allItems.length === 0) {
+            alert("No text could be extracted from this PDF. Please verify it is a text-based PDF invoice.");
+            resetBtn();
+            return;
+          }
+
+          // 1. Group items on the same horizontal line using running average Y with 8px tolerance
+          const sortedItemsByY = allItems.sort((a, b) => b.y - a.y);
+          const rows = [];
+          let currentRow = [];
+
+          sortedItemsByY.forEach(item => {
+            if (currentRow.length === 0) {
+              currentRow.push(item);
+            } else {
+              const avgY = currentRow.reduce((sum, it) => sum + it.y, 0) / currentRow.length;
+              if (Math.abs(item.y - avgY) <= 8) {
+                currentRow.push(item);
+              } else {
+                rows.push(currentRow);
+                currentRow = [item];
+              }
+            }
+          });
+          if (currentRow.length > 0) {
+            rows.push(currentRow);
+          }
+
+          // Sort items in each row left-to-right
+          rows.forEach(r => r.sort((a, b) => a.x - b.x));
+
+          // 2. Identify Column Channels using X-Coordinate Clustering
+          const allXCoordinates = [];
+          rows.forEach(rowItems => {
+            rowItems.forEach(item => {
+              allXCoordinates.push(item.x);
+            });
+          });
+
+          allXCoordinates.sort((a, b) => a - b);
+          const columnClusters = [];
+          allXCoordinates.forEach(x => {
+            let cluster = columnClusters.find(c => Math.abs(c.center - x) < 20); // 20px tolerance
+            if (!cluster) {
+              cluster = { center: x, values: [] };
+              columnClusters.push(cluster);
+            }
+            cluster.values.push(x);
+            cluster.center = cluster.values.reduce((sum, v) => sum + v, 0) / cluster.values.length;
+          });
+
+          // Sort columns left-to-right
+          columnClusters.sort((a, b) => a.center - b.center);
+
+          // 3. Map items of each row into cell columns of the Excel grid
+          const excelGrid = [];
+          rows.forEach(rowItems => {
+            const excelRow = Array(columnClusters.length).fill("");
+            
+            rowItems.forEach(item => {
+              // Find closest column channel center
+              let closestColIdx = 0;
+              let minDiff = Infinity;
+              columnClusters.forEach((col, idx) => {
+                const diff = Math.abs(col.center - item.x);
+                if (diff < minDiff) {
+                  minDiff = diff;
+                  closestColIdx = idx;
+                }
+              });
+
+              // Concatenate text values falling in the same column cell
+              excelRow[closestColIdx] = (excelRow[closestColIdx] + " " + item.str).trim();
+            });
+
+            excelGrid.push(excelRow);
+          });
+
+          // 4. Export to Excel (.xlsx) file
+          const worksheet = XLSX.utils.aoa_to_sheet(excelGrid);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, worksheet, "Parsed Table");
+
+          // Auto-adjust column widths to make it readable
+          const maxCols = columnClusters.length;
+          const colWidths = [];
+          for (let c = 0; c < maxCols; c++) {
+            let maxLen = 10;
+            excelGrid.forEach(row => {
+              const val = row[c] || "";
+              if (val.length > maxLen) maxLen = val.length;
+            });
+            colWidths.push({ wch: maxLen + 2 });
+          }
+          worksheet['!cols'] = colWidths;
+
+          XLSX.writeFile(workbook, `${file.name.replace(/\.[^/.]+$/, "")}_converted.xlsx`);
+          alert("SUCCESS! Converted PDF table to Excel spreadsheet. You can now open, verify, and upload it back directly!");
+        } catch (err) {
+          console.error("PDF-to-Excel conversion failed inside reader:", err);
+          alert("Could not process PDF data. Please ensure it is a text-based PDF invoice.");
+        } finally {
+          resetBtn();
+        }
+      };
+
+      fileReader.readAsArrayBuffer(file);
+    } catch (err) {
+      console.error("PDF-to-Excel conversion failed:", err);
+      alert("Failed to convert PDF. Please ensure the file is not corrupted.");
+      resetBtn();
+    }
+
+    function resetBtn() {
+      btn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Convert PDF to Excel
+      `;
+      btn.disabled = false;
+      fileInput.value = "";
+    }
   });
 }
 
