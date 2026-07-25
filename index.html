@@ -177,10 +177,6 @@
               </div>
             </div>
             
-            <div class="pos-categories-tabs" id="pos-category-tabs">
-              <!-- Tabs added dynamically -->
-            </div>
-            
             <div class="catalog-scroll">
               <div class="catalog-grid" id="pos-catalog-grid">
                 <!-- Products catalog rendered here -->
@@ -203,31 +199,6 @@
               <datalist id="pos-customer-names-list"></datalist>
               <input type="tel" id="pos-customer-phone" placeholder="Phone Number" class="form-control" maxlength="10" list="pos-customer-phones-list">
               <datalist id="pos-customer-phones-list"></datalist>
-            </div>
-            
-            <!-- Quick Custom Item billing row -->
-            <div class="custom-item-bar">
-              <h5>Quick Custom Item</h5>
-              <div class="custom-item-inputs">
-                <input type="text" id="pos-custom-name" name="name" placeholder="Item Name (e.g. Loose Coriander)">
-                <input type="number" id="pos-custom-price" name="price" placeholder="Price (₹)" min="1" step="0.5">
-                <select id="pos-custom-gst" name="gst">
-                  <option value="0">0% GST</option>
-                  <option value="5">5% GST</option>
-                  <option value="12">12% GST</option>
-                  <option value="18">18% GST</option>
-                  <option value="28">28% GST</option>
-                </select>
-                <select id="pos-custom-unit" name="unit">
-                  <option value="pcs">per Pc</option>
-                  <option value="kg">per Kg</option>
-                </select>
-                <div style="display:flex; align-items:center; gap:4px; font-size:11px; white-space:nowrap; color:var(--text-secondary); margin-left: 4px;">
-                  <input type="checkbox" id="pos-custom-save-catalog" style="width:14px; height:14px; cursor:pointer;">
-                  <label for="pos-custom-save-catalog" style="cursor:pointer; font-size: 11px;">Save to Catalog</label>
-                </div>
-                <button class="btn btn-primary" style="padding:6px 12px; font-size:12px; margin-left: auto;" id="pos-custom-add-btn">Add</button>
-              </div>
             </div>
             
             <!-- Active items list -->
@@ -1085,6 +1056,42 @@
           </div>
         </form>
       </div>
+    </div>
+  </div>
+
+  <!-- POS Quick Add Product Modal -->
+  <div class="modal-overlay" id="pos-quick-add-modal">
+    <div class="modal-content" style="max-width:400px; width:90%;">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:16px; color:var(--text-primary);">Quick Add New Product</h3>
+        <button class="modal-close" id="pos-quick-add-modal-close-btn" style="border:none; background:transparent; font-size:20px; cursor:pointer; color:var(--text-primary);">&times;</button>
+      </div>
+      <form id="pos-quick-add-form">
+        <div class="modal-body" style="padding:16px 0;">
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Product Name *</label>
+            <input type="text" id="quick-add-name" class="form-control" placeholder="e.g. Dabur Real Juice" required>
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Selling Price (₹, Incl. GST) *</label>
+            <input type="number" id="quick-add-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">GST Slab (India)</label>
+            <select id="quick-add-gst" class="form-control">
+              <option value="0">0% (Exempted)</option>
+              <option value="5">5% (Staples / Packaged)</option>
+              <option value="12">12% (Butter / Juices)</option>
+              <option value="18" selected>18% (Biscuits / Detergents)</option>
+              <option value="28">28% (Aerated Sodas / Chocolates)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="btn btn-secondary" id="pos-quick-add-modal-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:#8B5CF6; border-color:#7C3AED; color:#fff;">Save & Add to Cart</button>
+        </div>
+      </form>
     </div>
   </div>
 
