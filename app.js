@@ -244,7 +244,6 @@ function renderAll() {
   } else if (state.activePage === 'pos') {
     renderPOSCatalog();
     renderPOSCart();
-    renderCategoriesTabs();
     updatePOSCustomerDatalists();
   } else if (state.activePage === 'inventory') {
     renderInventory();
@@ -462,44 +461,34 @@ function renderSalesTrendChart() {
 let posSelectedCategory = "all";
 let posSearchQuery = "";
 
-function renderCategoriesTabs() {
-  const tabsContainer = document.getElementById("pos-category-tabs");
-  if (!tabsContainer) return;
-  tabsContainer.innerHTML = "";
 
-  // Extract unique categories from products list
-  const categories = ["all", ...new Set(state.products.map(p => p.category))];
-
-  categories.forEach(cat => {
-    const btn = document.createElement("button");
-    btn.className = `category-tab ${posSelectedCategory === cat ? "active" : ""}`;
-    btn.innerText = cat === "all" ? "All Items" : cat;
-    
-    btn.addEventListener("click", () => {
-      posSelectedCategory = cat;
-      renderCategoriesTabs();
-      renderPOSCatalog();
-    });
-    
-    tabsContainer.appendChild(btn);
-  });
-}
 
 function renderPOSCatalog() {
   const catalogGrid = document.getElementById("pos-catalog-grid");
   if (!catalogGrid) return;
   catalogGrid.innerHTML = "";
 
-  // Filter products by category and query
+  // Filter products strictly by query (categories tabs removed from POS)
   const filteredProducts = state.products.filter(p => {
-    const matchesCategory = posSelectedCategory === "all" || p.category === posSelectedCategory;
     const matchesSearch = p.name.toLowerCase().includes(posSearchQuery.toLowerCase()) || 
                           p.sku.includes(posSearchQuery);
-    return matchesCategory && matchesSearch;
+    return matchesSearch;
   });
 
   if (filteredProducts.length === 0) {
-    catalogGrid.innerHTML = `<div style="grid-column: span 4; text-align:center; color:var(--text-muted); font-size:14px; padding:30px;">No matching products found.</div>`;
+    const cleanSearch = posSearchQuery.trim();
+    if (cleanSearch.length > 0) {
+      catalogGrid.innerHTML = `
+        <div style="grid-column: span 4; text-align:center; padding:40px 20px; background:var(--bg-main); border:1px dashed var(--border-color); border-radius:8px;">
+          <p style="color:var(--text-secondary); font-size:14px; margin-bottom:12px;">"${cleanSearch}" not found in inventory catalog.</p>
+          <button class="btn btn-primary" onclick="window.openPosQuickAddModal('${cleanSearch.replace(/'/g, "\\'")}')" style="background:#8B5CF6; border-color:#7C3AED; color:#fff; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer;">
+            + Add New Product
+          </button>
+        </div>
+      `;
+    } else {
+      catalogGrid.innerHTML = `<div style="grid-column: span 4; text-align:center; color:var(--text-muted); font-size:14px; padding:30px;">No products in catalog.</div>`;
+    }
     return;
   }
 
@@ -542,6 +531,58 @@ function renderPOSCatalog() {
     catalogGrid.appendChild(card);
   });
 }
+
+function suggestHsn(nameVal) {
+  nameVal = nameVal.toLowerCase().trim();
+  if (/\b(soap|bath|body wash|cinthol|dettol|lifebuoy|dove|lux|pears|godrej no\.? 1|santoor|liril|savlon|fiama|handwash|hand wash)\b/.test(nameVal)) return "3401";
+  if (/\b(shampoo|hair oil|conditioner|parachute|clinic plus|pantene|sunsilk|almond drop|hair color|dye|garnier|loreal|haircream)\b/.test(nameVal)) return "3305";
+  if (/\b(toothpaste|brush|colgate|sensodyne|pepsodent|close up|dabur red|oral|toothbrush|dant|dentobac|meswak)\b/.test(nameVal)) return "3306";
+  if (/\b(detergent|wash|powder|surf|wheel|tide|ariel|vim|rin|harpic|lizol|cleaner|phenyle|comfort|colin|phenyl|acid|bleach|scrub|ezee|safewash)\b/.test(nameVal)) return "3402";
+  if (/\b(agarbatti|dhoop|incense|camphor|kapoor|pooja|havan|samagri|cotton wicks|mangaldeep|cycle agarbatti)\b/.test(nameVal)) return "3307";
+  if (/\b(good knight|goodknight|hit|mortein|all out|allout|mosquito|repellent|coil|insecticide|pest|spray)\b/.test(nameVal)) return "3808";
+  if (/\b(stayfree|stay free|whisper|sofy|sanitary|napkin|pad|pads)\b/.test(nameVal)) return "9619";
+  if (/\b(diaper|diapers|pampers|huggies|mamypoko|mamy poko|baby wipe|baby wipes)\b/.test(nameVal)) return "9619";
+  if (/\b(cola|coke|pepsi|sprite|fanta|thums up|thumsup|limca|dew|soda|aerated|soft drink|carbonated|maaza|frooti|slice|tropicana|real juice|real|juice|juices|drink|drinks|paper boat|b-natural|bnatural)\b/.test(nameVal)) return "2202";
+  if (/\b(water|mineral water|bisleri|kinley|aquafina|aquasure|himalayan)\b/.test(nameVal)) return "2201";
+  if (/\b(sauce|ketchup|jam|mayonnaise|spread|kissans|kissan|shezwan|chutney|vinegar|soya sauce|chilli sauce)\b/.test(nameVal)) return "2103";
+  if (/\b(pickle|pickles|achar|achari)\b/.test(nameVal)) return "2001";
+  if (/\b(biscuit|cookie|cookies|marie|gold|parle|britannia|crackjack|monaco|oreo|hide seek|rusk|hide \& seek|unibic|sunfeast|moms magic)\b/.test(nameVal)) return "1905";
+  if (/\b(chocolate|cadbury|dairy milk|kitkat|munch|perk|5 star|fivestar|snickers|choco|milkybar|eclairs|melody|cough drop|lozenge|candy|candies|gems)\b/.test(nameVal)) return "1806";
+  if (/\b(noodle|noodles|maggi|yippee|pasta|macaroni|knorr|soup|vermicelli|chowmein|ramen)\b/.test(nameVal)) return "1902";
+  if (/\b(chips|lays|kurkure|namkeen|bhujia|bingo|snack|puff|popcorn|mixture|sev|gathiya|murukku|aloo bhujia|chana chur)\b/.test(nameVal)) return "2106";
+  if (/\b(ghee|butter|amul|mother dairy|paneer|cheese|cream)\b/.test(nameVal)) return "0405";
+  if (/\b(mustard oil|fortune oil|refined oil|soya oil|canola oil|rice bran|safola|edible oil|coconut oil|dhara|saffola|oil|oils)\b/.test(nameVal)) return "1512";
+  if (/\b(tea|coffee|nescafe|bru|red label|taj mahal|tata tea|taj|ctc|dust|filter coffee)\b/.test(nameVal)) return "0902";
+  if (/\b(spice|masala|haldi|mirch|dhaniya|turmeric|chilli|mdh|everest|catch|powder|cardamom|elaichi|jeera|cumin|mustard seeds|sarso|methi|clove)\b/.test(nameVal)) return "0910";
+  if (/\b(honey|dabur honey|patanjali honey)\b/.test(nameVal)) return "0409";
+  if (/\b(papad|lijjat)\b/.test(nameVal)) return "1905";
+  if (/\b(salt|tata salt)\b/.test(nameVal)) return "2501";
+  if (/\b(atta|flour|maida|suji|besan|ashirvaad|aata|wheat flour)\b/.test(nameVal)) return "1101";
+  if (/\b(rice|basmati|puls|dal|moong|chana|rajma|pulses|urad|arhar|masoor|toor|kabuli)\b/.test(nameVal)) return "1006";
+  if (/\b(sugar|chini|shakkar|jaggery|gur)\b/.test(nameVal)) return "1701";
+  return "2106";
+}
+
+window.openPosQuickAddModal = function(query) {
+  const quickAddModal = document.getElementById("pos-quick-add-modal");
+  if (!quickAddModal) return;
+
+  document.getElementById("quick-add-name").value = query || "";
+  document.getElementById("quick-add-price").value = "";
+  
+  // Auto-suggest GST slab based on product name
+  const suggestedGst = suggestHsn(query) === "2501" || (suggestHsn(query) === "1905" && !query.toLowerCase().includes("biscuit")) ? "0" : 
+                        ["0902", "0910", "1101", "1006", "1701"].includes(suggestHsn(query)) ? "5" :
+                        ["0405", "2106", "2001"].includes(suggestHsn(query)) ? "12" : "18";
+  
+  document.getElementById("quick-add-gst").value = suggestedGst;
+
+  quickAddModal.classList.add("active");
+  
+  setTimeout(() => {
+    document.getElementById("quick-add-price").focus();
+  }, 100);
+};
 
 function setupPOSCartActions() {
   // Search input change
@@ -587,86 +628,58 @@ function setupPOSCartActions() {
     }
   });
 
-  // Custom Quick Add
-  const customAddBtn = document.getElementById("pos-custom-add-btn");
-  customAddBtn.addEventListener("click", () => {
-    const nameInput = document.getElementById("pos-custom-name");
-    const priceInput = document.getElementById("pos-custom-price");
-    const gstInput = document.getElementById("pos-custom-gst");
-    const unitInput = document.getElementById("pos-custom-unit");
-    const saveCatalogCheckbox = document.getElementById("pos-custom-save-catalog");
-
-    const name = nameInput.value.trim();
-    const price = parseFloat(priceInput.value);
-    const gst = parseInt(gstInput.value);
-    const unit = unitInput ? unitInput.value : "pcs";
-    const saveCatalog = saveCatalogCheckbox ? saveCatalogCheckbox.checked : false;
+  // Close POS Quick Add Modal listeners
+  const quickAddModal = document.getElementById("pos-quick-add-modal");
+  const closeQuickAdd = () => quickAddModal.classList.remove("active");
+  
+  document.getElementById("pos-quick-add-modal-close-btn").addEventListener("click", closeQuickAdd);
+  document.getElementById("pos-quick-add-modal-cancel-btn").addEventListener("click", closeQuickAdd);
+  
+  // Quick Add Form submit handler
+  document.getElementById("pos-quick-add-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = document.getElementById("quick-add-name").value.trim();
+    const price = parseFloat(document.getElementById("quick-add-price").value);
+    const gst = parseInt(document.getElementById("quick-add-gst").value);
 
     if (!name || isNaN(price) || price <= 0) {
-      alert("Please enter a valid Custom Item Name and Price.");
+      alert("Please enter a valid Product Name and Price.");
       return;
     }
 
-    if (saveCatalog) {
-      // Check duplication in catalog
-      const duplicate = state.products.find(p => p.name.toLowerCase() === name.toLowerCase());
-      if (duplicate) {
-        alert("A product with this name already exists in your inventory catalog. Adding it from catalog instead.");
-        addToCart(duplicate.sku);
-      } else {
-        // Create permanent product in inventory catalog
-        const autoSku = `CUST-${Math.floor(10000 + Math.random() * 90000)}`;
-        const newProduct = {
-          sku: autoSku,
-          name: name,
-          category: "Produce", // default
-          hsn: "9999", // default
-          costPrice: Number((price * 0.8).toFixed(2)), // assume 20% margin
-          sellingPrice: price,
-          gstSlab: gst,
-          stock: 100, // seed initial stock
-          reorderLevel: 5,
-          unit: unit,
-          discountPercent: 0
-        };
-        state.products.push(newProduct);
-        saveProductsToStorage();
-        
-        // Add to cart as a regular product
-        addToCart(autoSku);
-        
-        // Re-render categories and catalog list
-        renderCategoriesTabs();
-        renderPOSCatalog();
-      }
-    } else {
-      // Add a custom quick item just to this cart
-      const customSku = `CUSTOM-${Date.now()}`;
-      const customItem = {
-        sku: customSku,
-        name: name,
-        sellingPrice: price,
-        costPrice: Number((price * 0.8).toFixed(2)),
-        category: "Produce",
-        hsn: "9999",
-        gstSlab: gst,
-        unit: unit,
-        isCustom: true
-      };
+    // Generate local unique SKU
+    const sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
+    
+    // Auto-suggest HSN based on product name
+    const hsn = suggestHsn(name);
 
-      // Push into active cart list directly
-      state.cart.push({
-        product: customItem,
-        quantity: 1
-      });
-      renderPOSCart();
-    }
+    // Create permanent product in inventory catalog
+    const newProduct = {
+      sku,
+      name,
+      category: "General FMCG",
+      hsn,
+      costPrice: Number((price * 0.8).toFixed(2)), // default ~20% margin
+      sellingPrice: price,
+      gstSlab: gst,
+      stock: 100, // seed initial stock
+      reorderLevel: 5,
+      unit: "pcs",
+      discountPercent: 0
+    };
 
-    // Reset inputs
-    nameInput.value = "";
-    priceInput.value = "";
-    gstInput.value = "0";
-    if (saveCatalogCheckbox) saveCatalogCheckbox.checked = false;
+    state.products.push(newProduct);
+    saveProductsToStorage();
+    
+    // Add to cart
+    addToCart(sku);
+
+    // Clear search query & input
+    document.getElementById("pos-search-input").value = "";
+    posSearchQuery = "";
+    
+    renderPOSCatalog();
+    closeQuickAdd();
   });
 
   // Clear Cart
