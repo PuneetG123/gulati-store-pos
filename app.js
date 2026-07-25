@@ -1316,8 +1316,89 @@ function setupInventoryActions() {
     document.getElementById("prod-edit-id").value = "";
     document.getElementById("product-form").reset();
     document.getElementById("prod-sku").disabled = false;
+    
+    // Clear auto-fill markers
+    delete document.getElementById("prod-hsn").dataset.autoFilled;
+    delete document.getElementById("prod-gst").dataset.autoFilled;
+    
     addModal.classList.add("active");
   });
+
+  // Smart HSN & GST Auto-Suggester based on product name
+  const nameInput = document.getElementById("prod-name");
+  if (nameInput) {
+    nameInput.addEventListener("input", () => {
+      const nameVal = nameInput.value.toLowerCase().trim();
+      if (!nameVal) return;
+
+      let hsn = "";
+      let gst = "";
+
+      // Smart pattern matching for common Indian packaged goods / FMCG
+      if (/\b(soap|bath|body wash|cinthol|dettol|lifebuoy|dove|lux|pears|godrej no\.? 1|santoor|liril)\b/.test(nameVal)) {
+        hsn = "3401";
+        gst = "18";
+      } else if (/\b(shampoo|hair oil|conditioner|parachute|clinic plus|pantene|sunsilk|almond drop|hair color|dye)\b/.test(nameVal)) {
+        hsn = "3305";
+        gst = "18";
+      } else if (/\b(toothpaste|brush|colgate|sensodyne|pepsodent|close up|dabur red|oral)\b/.test(nameVal)) {
+        hsn = "3306";
+        gst = "18";
+      } else if (/\b(detergent|wash|powder|surf|wheel|tide|ariel|vim|rin|harpic|lizol|cleaner|phenyle|comfort)\b/.test(nameVal)) {
+        hsn = "3402";
+        gst = "18";
+      } else if (/\b(biscuit|cookie|marie|gold|parle|britannia|crackjack|monaco|oreo|hide seek|rusk|hide \& seek)\b/.test(nameVal)) {
+        hsn = "1905";
+        gst = "18";
+      } else if (/\b(chocolate|cadbury|dairy milk|kitkat|munch|perk|5 star|snickers|choco|milkybar)\b/.test(nameVal)) {
+        hsn = "1806";
+        gst = "18";
+      } else if (/\b(noodle|maggi|yippee|pasta|macaroni|knorr|soup|vermicelli)\b/.test(nameVal)) {
+        hsn = "1902";
+        gst = "18";
+      } else if (/\b(chips|lays|kurkure|namkeen|bhujia|bingo|snack|puff|popcorn|mixture|sev)\b/.test(nameVal)) {
+        hsn = "2106";
+        gst = "12";
+      } else if (/\b(ghee|butter|amul|mother dairy|paneer|cheese)\b/.test(nameVal)) {
+        hsn = "0405";
+        gst = "12";
+      } else if (/\b(mustard oil|fortune oil|refined oil|soya oil|canola oil|rice bran|safola|edible oil)\b/.test(nameVal)) {
+        hsn = "1512";
+        gst = "5";
+      } else if (/\b(tea|coffee|nescafe|bru|red label|taj mahal|tata tea|taj)\b/.test(nameVal)) {
+        hsn = "0902";
+        gst = "5";
+      } else if (/\b(spice|masala|haldi|mirch|dhaniya|turmeric|chilli|mdh|everest|catch|powder)\b/.test(nameVal)) {
+        hsn = "0910";
+        gst = "5";
+      } else if (/\b(salt|tata salt)\b/.test(nameVal)) {
+        hsn = "2501";
+        gst = "0";
+      } else if (/\b(atta|flour|maida|suji|besan|ashirvaad)\b/.test(nameVal)) {
+        hsn = "1101";
+        gst = "5";
+      } else if (/\b(rice|basmati|puls|dal|moong|chana|rajma|pulses|urad|arhar)\b/.test(nameVal)) {
+        hsn = "1006";
+        gst = "5";
+      } else if (/\b(sugar|chini)\b/.test(nameVal)) {
+        hsn = "1701";
+        gst = "5";
+      }
+
+      const hsnInput = document.getElementById("prod-hsn");
+      const gstSelect = document.getElementById("prod-gst");
+      
+      // Auto-populate only if empty or previously auto-filled
+      if (hsn && hsnInput && (!hsnInput.value || hsnInput.dataset.autoFilled === "true")) {
+        hsnInput.value = hsn;
+        hsnInput.dataset.autoFilled = "true";
+      }
+      if (gst && gstSelect && (gstSelect.value === "0" || gstSelect.dataset.autoFilled === "true")) {
+        gstSelect.value = gst;
+        gstSelect.dataset.autoFilled = "true";
+      }
+    });
+  }
 
   document.getElementById("product-modal-close-btn").addEventListener("click", () => {
     addModal.classList.remove("active");
@@ -1341,10 +1422,6 @@ function setupInventoryActions() {
       renderAll();
     }
   });
-
-  // Setup Distributor Bill Importer
-  setupDistributorBillImporter();
-  setupPdfToExcelConverter();
 }
 
 function renderInventoryCategoriesFilter() {
