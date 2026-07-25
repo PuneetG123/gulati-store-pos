@@ -2072,9 +2072,14 @@ function filterAndRenderStatement() {
           : `Payment Received (${entry.ref})`;
       }
       
+      let attachmentLink = "";
+      if (entry.attachmentData) {
+        attachmentLink = `<br><a href="${entry.attachmentData}" download="${entry.attachmentName || 'proof.png'}" style="color:var(--primary); font-size:11px; font-weight:600; text-decoration:underline; display:inline-block; margin-top:4px;">📎 View Proof Attachment</a>`;
+      }
+      
       tr.innerHTML = `
         <td>${formatDate(entry.date)}</td>
-        <td><strong>${detailsText}</strong></td>
+        <td><strong>${detailsText}</strong>${attachmentLink}</td>
         <td style="color:var(--danger);">${entry.type === 'debit' ? '+' + formatRupee(entry.amount) : '-'}</td>
         <td style="color:var(--success);">${entry.type === 'credit' ? '-' + formatRupee(entry.amount) : '-'}</td>
         <td style="font-weight:700; color:${entry.runningBalAfter > 0 ? 'var(--danger)' : 'var(--success)'};">${formatRupee(entry.runningBalAfter)}</td>
@@ -2505,6 +2510,8 @@ function setupCustomerLedgerActions() {
       const phone = document.getElementById("adjust-cust-phone").value;
       const addedDues = parseFloat(document.getElementById("adjust-new-dues").value);
       const reason = document.getElementById("adjust-reason").value.trim() || "Balance Adjustment";
+      const attachmentInput = document.getElementById("adjust-attachment");
+      const file = attachmentInput && attachmentInput.files ? attachmentInput.files[0] : null;
 
       if (isNaN(addedDues) || addedDues === 0) {
         alert("Please enter a valid dues adjustment amount (non-zero).");
@@ -2512,7 +2519,9 @@ function setupCustomerLedgerActions() {
       }
 
       const cust = state.customers.find(c => c.phone === phone);
-      if (cust) {
+      if (!cust) return;
+
+      const saveAdjustment = (attachmentData = null, attachmentName = null) => {
         // Add inputted amount directly to current dues balance
         cust.balance += addedDues;
         cust.lastTxn = new Date().toISOString().split('T')[0];
@@ -2523,7 +2532,9 @@ function setupCustomerLedgerActions() {
           phone: phone,
           type: addedDues > 0 ? "debit" : "credit",
           amount: Math.abs(addedDues),
-          ref: reason
+          ref: reason,
+          attachmentData: attachmentData,
+          attachmentName: attachmentName
         });
 
         saveCustomersToStorage();
@@ -2531,6 +2542,26 @@ function setupCustomerLedgerActions() {
 
         adjustModal.classList.remove("active");
         renderLedger();
+      };
+
+      if (file) {
+        // File validation (limit to 5MB for storage safety)
+        if (file.size > 5 * 1024 * 1024) {
+          alert("File size exceeds 5MB limit. Please upload a smaller file.");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          saveAdjustment(evt.target.result, file.name);
+        };
+        reader.onerror = function() {
+          alert("Error reading attachment file. Saving adjustment without attachment.");
+          saveAdjustment();
+        };
+        reader.readAsDataURL(file);
+      } else {
+        saveAdjustment();
       }
     });
   }
@@ -2574,6 +2605,9 @@ window.openAdjustDuesModal = function(phone) {
   document.getElementById("adjust-current-dues").value = formatRupee(cust.balance);
   document.getElementById("adjust-new-dues").value = "";
   document.getElementById("adjust-reason").value = "";
+  
+  const fileInput = document.getElementById("adjust-attachment");
+  if (fileInput) fileInput.value = "";
 
   document.getElementById("adjust-dues-modal").classList.add("active");
 };
