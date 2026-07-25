@@ -3220,10 +3220,16 @@ function generateDistributorPreview() {
     const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
     const sku = colSku && row[colSku] ? String(row[colSku]).trim() : `BILL_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
     const hsn = colHsn && row[colHsn] ? String(row[colHsn]).trim().replace(/[^0-9]/g, '') : "2106";
-    const costPrice = colCost && row[colCost] ? parseFloat(row[colCost].replace(/[^0-9.]/g, '')) || 0 : 0;
-    const sellingPrice = colMrp && row[colMrp] ? parseFloat(row[colMrp].replace(/[^0-9.]/g, '')) || costPrice : costPrice;
-    const gstSlab = colGst && row[colGst] ? parseFloat(row[colGst].replace(/[^0-9.]/g, '')) || 18 : 18;
-    const qty = colQty && row[colQty] ? parseFloat(row[colQty].replace(/[^0-9.]/g, '')) || 1 : 1;
+    const costPrice = colCost && row[colCost] ? parseFloat(row[colCost].toString().replace(/[^0-9.]/g, '')) || 0 : 0;
+    
+    // MRP Fallback: Use cost price if MRP is not defined or is 0
+    let sellingPrice = colMrp && row[colMrp] ? parseFloat(row[colMrp].toString().replace(/[^0-9.]/g, '')) || 0 : 0;
+    if (sellingPrice === 0) {
+      sellingPrice = costPrice;
+    }
+
+    const gstSlab = colGst && row[colGst] ? parseFloat(row[colGst].toString().replace(/[^0-9.]/g, '')) || 18 : 18;
+    const qty = colQty && row[colQty] ? parseFloat(row[colQty].toString().replace(/[^0-9.]/g, '')) || 1 : 1;
 
     distributorActivePreviewRows.push({
       id: rawIdx,
@@ -3352,36 +3358,21 @@ async function readDistributorPdf(file) {
       const typedarray = new Uint8Array(e.target.result);
       const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
       
-      let fullTextLines = [];
+      let allItems = [];
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         
-        // Group items on the same horizontal line (tolerance 4px)
-        const itemsByY = {};
         textContent.items.forEach(item => {
           const str = item.str ? item.str.trim() : "";
           if (!str) return;
-          const y = item.transform[5];
           const x = item.transform[4];
-          let matchedY = Object.keys(itemsByY).find(keyY => Math.abs(parseFloat(keyY) - y) <= 4);
-          if (!matchedY) {
-            matchedY = y.toString();
-            itemsByY[matchedY] = [];
-          }
-          itemsByY[matchedY].push({ str, x });
-        });
-
-        // Sort rows top to bottom
-        const sortedY = Object.keys(itemsByY).sort((a, b) => parseFloat(b) - parseFloat(a));
-        sortedY.forEach(y => {
-          const lineItems = itemsByY[y].sort((a, b) => a.x - b.x);
-          const lineStr = lineItems.map(it => it.str).join(" ").trim();
-          if (lineStr) fullTextLines.push(lineStr);
+          const y = item.transform[5];
+          allItems.push({ str, x, y, page: i });
         });
       }
 
-      parseDistributorPdfLines(fullTextLines);
+      parseStructuredPdfTable(allItems);
     } catch (err) {
       console.error("Failed to parse PDF invoice:", err);
       alert("Could not read PDF invoice. Please ensure it is a text-based PDF invoice or try exporting as Excel/CSV.");
@@ -3390,39 +3381,128 @@ async function readDistributorPdf(file) {
   reader.readAsArrayBuffer(file);
 }
 
-function parseDistributorPdfLines(lines) {
-  distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
+function parseStructuredPdfTable(allItems) {
+  const rowsByY = {};
+  allItems.forEach(item => {
+    let matchedY = Object.keys(rowsByY).find(y => Math.abs(parseFloat(y) - item.y) <= 4);
+    if (!matchedY) {
+      matchedY = item.y.toString();
+      rowsByY[matchedY] = [];
+    }
+    rowsByY[matchedY].push(item);
+  });
+
+  const sortedYKeys = Object.keys(rowsByY).sort((a, b) => parseFloat(b) - parseFloat(a));
+
+  const presetKey = document.getElementById("distributor-preset-select").value;
+  let targetHdrName = "item";
+  let tpl = null;
+
+  if (presetKey.startsWith("custom_")) {
+    const idx = parseInt(presetKey.replace("custom_", ""));
+    tpl = customDistributorTemplates[idx];
+    if (tpl && tpl.hdrName) targetHdrName = tpl.hdrName.toLowerCase().trim();
+  }
+
+  let headerY = null;
+  let headerRowItems = [];
+  for (const y of sortedYKeys) {
+    const rowItems = rowsByY[y];
+    const rowStr = rowItems.map(it => it.str).join(" ").toLowerCase();
+    if (rowStr.includes(targetHdrName) || rowStr.includes("desc") || rowStr.includes("particular") || rowStr.includes("material description")) {
+      headerY = y;
+      headerRowItems = rowItems.sort((a, b) => a.x - b.x);
+      break;
+    }
+  }
+
+  distributorHeaders = [];
   distributorParsedRows = [];
 
-  lines.forEach(line => {
-    // Skip invoice header/footer meta lines
-    const lower = line.toLowerCase();
-    if (lower.includes("invoice") || lower.includes("subtotal") || lower.includes("grand total") || lower.includes("bank details") || lower.includes("terms & conditions") || lower.includes("gstin") || line.length < 5) {
+  if (!headerY || headerRowItems.length < 2) {
+    distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
+    parseFallbackPdfLines(sortedYKeys, rowsByY);
+    return;
+  }
+
+  // Merge multi-word column headers if they are horizontally very close (gap < 25px)
+  const mergedHeaders = [];
+  headerRowItems.forEach(item => {
+    const prev = mergedHeaders[mergedHeaders.length - 1];
+    if (prev && (item.x - (prev.x + prev.str.length * 6)) < 25) {
+      prev.str += " " + item.str;
+    } else {
+      mergedHeaders.push({ str: item.str, x: item.x });
+    }
+  });
+
+  const colBounds = mergedHeaders.map((hdr, idx) => {
+    const title = hdr.str.trim();
+    const minX = hdr.x - 15;
+    const nextHdr = mergedHeaders[idx + 1];
+    const maxX = nextHdr ? (hdr.x + nextHdr.x) / 2 : 2000;
+    return { title, minX, maxX };
+  });
+
+  distributorHeaders = colBounds.map(c => c.title);
+
+  const headerYFloat = parseFloat(headerY);
+  sortedYKeys.forEach(y => {
+    const yFloat = parseFloat(y);
+    if (yFloat >= headerYFloat) return;
+
+    const rowItems = rowsByY[y];
+    const rowLineStr = rowItems.map(it => it.str).join(" ").toLowerCase();
+    if (rowLineStr.includes("total") || rowLineStr.includes("subtotal") || rowLineStr.includes("bank") || rowLineStr.includes("terms") || rowLineStr.includes("gstin") || rowLineStr.length < 3) {
       return;
     }
 
-    // Match numbers in line (HSN, Qty, Rate, MRP, GST)
+    const rowObj = {};
+    distributorHeaders.forEach(h => rowObj[h] = "");
+
+    rowItems.forEach(item => {
+      const col = colBounds.find(c => item.x >= c.minX && item.x < c.maxX);
+      if (col) {
+        rowObj[col.title] = (rowObj[col.title] + " " + item.str).trim();
+      }
+    });
+
+    const nameVal = tpl ? rowObj[tpl.hdrName] : Object.values(rowObj)[0];
+    if (nameVal && nameVal.trim().length >= 2) {
+      distributorParsedRows.push(rowObj);
+    }
+  });
+
+  populateColumnMappers();
+  applyDistributorPreset(presetKey);
+  generateDistributorPreview();
+
+  document.getElementById("distributor-mapping-section").style.display = "block";
+  document.getElementById("distributor-preview-container").style.display = "block";
+}
+
+function parseFallbackPdfLines(sortedYKeys, rowsByY) {
+  sortedYKeys.forEach(y => {
+    const lineItems = rowsByY[y].sort((a, b) => a.x - b.x);
+    const line = lineItems.map(it => it.str).join(" ").trim();
+    const lower = line.toLowerCase();
+    if (lower.includes("invoice") || lower.includes("subtotal") || lower.includes("grand total") || lower.includes("bank") || lower.includes("terms") || lower.includes("gstin") || line.length < 5) return;
+
     const numbers = line.match(/\d+(\.\d+)?/g);
     if (!numbers || numbers.length < 2) return;
 
-    // Extract Product Name (text before numbers)
     const nameMatch = line.match(/^[a-zA-Z0-9\s\-\.&\(\)\/]+/);
     if (!nameMatch || nameMatch[0].trim().length < 3) return;
 
     const name = nameMatch[0].replace(/^\d+\s*/, '').trim();
     if (name.length < 3 || lower.includes("page") || lower.includes("total")) return;
 
-    // Detect HSN Code (4, 6, 8 digits)
     let hsn = "2106";
     const hsnMatch = line.match(/\b(040\d|190\d|110\d|151\d|220\d|340\d|180\d|250\d|\d{4}|\d{6}|\d{8})\b/);
     if (hsnMatch) hsn = hsnMatch[0];
 
-    // Detect Prices and Quantities
     const floatVals = numbers.map(n => parseFloat(n)).filter(n => !isNaN(n));
-    let costPrice = 0;
-    let sellingPrice = 0;
-    let gstSlab = 18;
-    let qty = 1;
+    let costPrice = 0, sellingPrice = 0, gstSlab = 18, qty = 1;
 
     floatVals.forEach(val => {
       if (val === 5 || val === 12 || val === 18 || val === 28) gstSlab = val;
