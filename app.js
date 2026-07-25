@@ -3382,6 +3382,7 @@ async function readDistributorPdf(file) {
 }
 
 function parseStructuredPdfTable(allItems) {
+  // 1. Group items on the same horizontal line (tolerance +/- 4px)
   const rowsByY = {};
   allItems.forEach(item => {
     let matchedY = Object.keys(rowsByY).find(y => Math.abs(parseFloat(y) - item.y) <= 4);
@@ -3394,86 +3395,108 @@ function parseStructuredPdfTable(allItems) {
 
   const sortedYKeys = Object.keys(rowsByY).sort((a, b) => parseFloat(b) - parseFloat(a));
 
-  const presetKey = document.getElementById("distributor-preset-select").value;
-  let targetHdrName = "item";
-  let tpl = null;
+  // 2. Identify Product Data Rows
+  const dataRowsY = [];
+  sortedYKeys.forEach(y => {
+    const rowItems = rowsByY[y].sort((a, b) => a.x - b.x);
+    if (rowItems.length < 3) return;
 
-  if (presetKey.startsWith("custom_")) {
-    const idx = parseInt(presetKey.replace("custom_", ""));
-    tpl = customDistributorTemplates[idx];
-    if (tpl && tpl.hdrName) targetHdrName = tpl.hdrName.toLowerCase().trim();
-  }
+    // First item should be a number (SN) at X < 55
+    const snStr = rowItems[0].str.trim();
+    const snNum = parseInt(snStr);
+    const isSn = !isNaN(snNum) && snNum > 0 && snNum < 100 && rowItems[0].x < 55;
+    
+    // Check if the row contains an HSN code (typically a 4-8 digit number)
+    const hasHsn = rowItems.some(it => /^\d{4,8}$/.test(it.str.trim()));
 
-  let headerY = null;
-  let headerRowItems = [];
-  for (const y of sortedYKeys) {
-    const rowItems = rowsByY[y];
-    const rowStr = rowItems.map(it => it.str).join(" ").toLowerCase();
-    if (rowStr.includes(targetHdrName) || rowStr.includes("desc") || rowStr.includes("particular") || rowStr.includes("material description")) {
-      headerY = y;
-      headerRowItems = rowItems.sort((a, b) => a.x - b.x);
-      break;
+    if (isSn && hasHsn) {
+      dataRowsY.push(y);
     }
-  }
+  });
 
-  distributorHeaders = [];
-  distributorParsedRows = [];
-
-  if (!headerY || headerRowItems.length < 2) {
+  if (dataRowsY.length === 0) {
+    // Fallback if no structured data rows found
     distributorHeaders = ["Item Description", "HSN Code", "Basic Rate", "MRP", "GST %", "Billed Qty", "Item Code"];
     parseFallbackPdfLines(sortedYKeys, rowsByY);
     return;
   }
 
-  // Merge multi-word column headers if they are horizontally very close (gap < 25px)
-  const mergedHeaders = [];
-  headerRowItems.forEach(item => {
-    const prev = mergedHeaders[mergedHeaders.length - 1];
-    if (prev && (item.x - (prev.x + prev.str.length * 6)) < 25) {
-      prev.str += " " + item.str;
-    } else {
-      mergedHeaders.push({ str: item.str, x: item.x });
+  // 3. Cluster X Coordinates to Identify Column Channels
+  const allXCoordinates = [];
+  dataRowsY.forEach(y => {
+    rowsByY[y].forEach(item => {
+      allXCoordinates.push(item.x);
+    });
+  });
+
+  allXCoordinates.sort((a, b) => a - b);
+  const columnClusters = [];
+  allXCoordinates.forEach(x => {
+    let cluster = columnClusters.find(c => Math.abs(c.center - x) < 20); // 20px tolerance
+    if (!cluster) {
+      cluster = { center: x, values: [] };
+      columnClusters.push(cluster);
     }
+    cluster.values.push(x);
+    // Recalculate average center
+    cluster.center = cluster.values.reduce((sum, v) => sum + v, 0) / cluster.values.length;
   });
 
-  const colBounds = mergedHeaders.map((hdr, idx) => {
-    const title = hdr.str.trim();
-    const minX = hdr.x - 15;
-    const nextHdr = mergedHeaders[idx + 1];
-    const maxX = nextHdr ? (hdr.x + nextHdr.x) / 2 : 2000;
-    return { title, minX, maxX };
+  // Sort columns left-to-right
+  columnClusters.sort((a, b) => a.center - b.center);
+
+  // 4. Find Header Y Coordinates (all Y lines above first data row Y)
+  const firstDataY = parseFloat(dataRowsY[0]);
+  const headerLinesY = sortedYKeys.filter(y => parseFloat(y) > firstDataY && parseFloat(y) < firstDataY + 150);
+
+  // Reconstruct column header names by collecting text items near each column cluster center
+  distributorHeaders = columnClusters.map((col, colIdx) => {
+    let titleParts = [];
+    headerLinesY.forEach(y => {
+      rowsByY[y].forEach(item => {
+        // If the item aligns horizontally with this column center
+        if (Math.abs(item.x - col.center) < 25) {
+          titleParts.push({ str: item.str.trim(), y: parseFloat(y) });
+        }
+      });
+    });
+
+    // Sort top-to-bottom
+    titleParts.sort((a, b) => b.y - a.y);
+    const title = titleParts.map(p => p.str).join(" ").trim();
+    return title || `Column ${colIdx + 1}`;
   });
 
-  distributorHeaders = colBounds.map(c => c.title);
-
-  const headerYFloat = parseFloat(headerY);
-  sortedYKeys.forEach(y => {
-    const yFloat = parseFloat(y);
-    if (yFloat >= headerYFloat) return;
-
+  // 5. Reconstruct Data Rows by aligning text items to nearest column channel
+  distributorParsedRows = [];
+  dataRowsY.forEach(y => {
     const rowItems = rowsByY[y];
-    const rowLineStr = rowItems.map(it => it.str).join(" ").toLowerCase();
-    if (rowLineStr.includes("total") || rowLineStr.includes("subtotal") || rowLineStr.includes("bank") || rowLineStr.includes("terms") || rowLineStr.includes("gstin") || rowLineStr.length < 3) {
-      return;
-    }
-
     const rowObj = {};
     distributorHeaders.forEach(h => rowObj[h] = "");
 
     rowItems.forEach(item => {
-      const col = colBounds.find(c => item.x >= c.minX && item.x < c.maxX);
-      if (col) {
-        rowObj[col.title] = (rowObj[col.title] + " " + item.str).trim();
-      }
+      // Find closest column channel center
+      let closestColIdx = 0;
+      let minDiff = Infinity;
+      columnClusters.forEach((col, idx) => {
+        const diff = Math.abs(col.center - item.x);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestColIdx = idx;
+        }
+      });
+
+      const colName = distributorHeaders[closestColIdx];
+      // Concatenate values belonging to the same column (like multi-word item name)
+      rowObj[colName] = (rowObj[colName] + " " + item.str).trim();
     });
 
-    const nameVal = tpl ? rowObj[tpl.hdrName] : Object.values(rowObj)[0];
-    if (nameVal && nameVal.trim().length >= 2) {
-      distributorParsedRows.push(rowObj);
-    }
+    distributorParsedRows.push(rowObj);
   });
 
   populateColumnMappers();
+
+  const presetKey = document.getElementById("distributor-preset-select").value;
   applyDistributorPreset(presetKey);
   generateDistributorPreview();
 
