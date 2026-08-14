@@ -2627,6 +2627,7 @@ window.openAdjustDuesModal = function(phone) {
 // SECURITY PIN ENTRY & AUTHENTICATION HANDLERS
 // =======================================================
 let enteredPin = "";
+let lastPinPressTime = 0;
 
 function getAuthHeaders() {
   const token = localStorage.getItem('fc_session_token');
@@ -2648,6 +2649,10 @@ function hideLoginScreen() {
 }
 
 window.pressPinNumber = function(num) {
+  const now = Date.now();
+  if (now - lastPinPressTime < 150) return; // Prevent double-firing from touch + click events
+  lastPinPressTime = now;
+
   if (enteredPin.length >= 4) return;
   enteredPin += String(num);
   updatePinDisplay();
