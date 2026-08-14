@@ -2625,9 +2625,6 @@ window.openAdjustDuesModal = function(phone) {
 // =======================================================
 // SECURITY PIN ENTRY & AUTHENTICATION HANDLERS
 // =======================================================
-let enteredPin = "";
-let lastPinPressTime = 0;
-
 function getAuthHeaders() {
   const token = localStorage.getItem('fc_session_token');
   return token ? { 'Authorization': 'Bearer ' + token } : {};
@@ -2644,92 +2641,6 @@ function hideLoginScreen() {
   const overlay = document.getElementById('login-overlay');
   if (overlay) {
     overlay.classList.remove('login-overlay-active');
-  }
-}
-
-window.pressPinNumber = function(num) {
-  const now = Date.now();
-  if (now - lastPinPressTime < 150) return; // Prevent touch + click double triggers
-  lastPinPressTime = now;
-
-  if (enteredPin.length >= 4) return;
-  enteredPin += String(num);
-  updatePinDisplay();
-  
-  if (enteredPin.length === 4) {
-    setTimeout(submitPin, 150);
-  }
-};
-
-window.clearPin = function() {
-  enteredPin = "";
-  updatePinDisplay();
-  hidePinError();
-};
-
-window.backspacePin = function() {
-  if (enteredPin.length > 0) {
-    enteredPin = enteredPin.slice(0, -1);
-    updatePinDisplay();
-    hidePinError();
-  }
-};
-
-function updatePinDisplay() {
-  const dots = document.querySelectorAll('.pin-dot');
-  dots.forEach((dot, idx) => {
-    if (idx < enteredPin.length) {
-      dot.classList.add('filled');
-    } else {
-      dot.classList.remove('filled');
-    }
-  });
-}
-
-function showPinError() {
-  const errMsg = document.getElementById('login-error-msg');
-  if (errMsg) errMsg.classList.add('show');
-  
-  const loginBox = document.querySelector('.login-box');
-  if (loginBox) {
-    loginBox.classList.add('shake-box');
-    setTimeout(() => {
-      loginBox.classList.remove('shake-box');
-    }, 400);
-  }
-}
-
-function hidePinError() {
-  const errMsg = document.getElementById('login-error-msg');
-  if (errMsg) errMsg.classList.remove('show');
-}
-
-async function submitPin() {
-  try {
-    const response = await fetch('/api/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ pin: enteredPin })
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      localStorage.setItem('fc_session_token', data.token);
-      hideLoginScreen();
-      clearPin();
-      
-      // Retry loading the main application data
-      await initData();
-      renderAll();
-    } else {
-      showPinError();
-      clearPin();
-    }
-  } catch (err) {
-    console.error("Login request failed:", err);
-    alert("Could not connect to POS server for verification.");
   }
 }
 
