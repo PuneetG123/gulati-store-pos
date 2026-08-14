@@ -901,7 +901,6 @@ function renderPOSCart() {
   document.getElementById("summary-total").innerText = formatRupee(payableTotal);
 
   // Focus the top of the cart list where newly added/scanned items are unshifted
-  const cartWrapper = document.getElementById("pos-cart-items");
   if (cartWrapper) {
     cartWrapper.scrollTop = 0;
   }
