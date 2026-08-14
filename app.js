@@ -31,6 +31,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Initial renders
   renderAll();
 
+  // Scroll to Top Button Visibility Listener
+  const mainContent = document.getElementById("main-content");
+  const scrollTopBtn = document.getElementById("scroll-to-top-btn");
+  if (mainContent && scrollTopBtn) {
+    mainContent.addEventListener("scroll", () => {
+      if (mainContent.scrollTop > 80) {
+        scrollTopBtn.style.opacity = "1";
+        scrollTopBtn.style.pointerEvents = "auto";
+      } else {
+        scrollTopBtn.style.opacity = "0";
+        scrollTopBtn.style.pointerEvents = "none";
+      }
+    });
+  }
+
   // Register Service Worker for PWA (Mobile App Installation)
   if ('serviceWorker' in navigator) {
     try {
