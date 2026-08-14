@@ -2542,67 +2542,76 @@ function setupCustomerLedgerActions() {
     adjustForm.addEventListener("submit", (e) => {
       e.preventDefault();
 
-      const phone = document.getElementById("adjust-cust-phone").value;
-      const addedDues = parseFloat(document.getElementById("adjust-new-dues").value);
-      const reason = document.getElementById("adjust-reason").value.trim() || "Balance Adjustment";
-      const attachmentInput = document.getElementById("adjust-attachment");
-      
-      let file = null;
-      if (attachmentInput && attachmentInput.files && attachmentInput.files[0]) {
-        file = attachmentInput.files[0];
-      } else if (cameraInput && cameraInput.files && cameraInput.files[0]) {
-        file = cameraInput.files[0];
-      }
+      try {
+        const phone = document.getElementById("adjust-cust-phone").value;
+        const addedDuesVal = document.getElementById("adjust-new-dues").value;
+        const addedDues = parseFloat(addedDuesVal);
+        const reason = document.getElementById("adjust-reason").value.trim() || "Balance Adjustment";
+        const attachmentInput = document.getElementById("adjust-attachment");
+        
+        let file = null;
+        if (attachmentInput && attachmentInput.files && attachmentInput.files[0]) {
+          file = attachmentInput.files[0];
+        } else if (cameraInput && cameraInput.files && cameraInput.files[0]) {
+          file = cameraInput.files[0];
+        }
 
-      if (isNaN(addedDues) || addedDues === 0) {
-        alert("Please enter a valid dues adjustment amount (non-zero).");
-        return;
-      }
-
-      const cust = state.customers.find(c => c.phone === phone);
-      if (!cust) return;
-
-      const saveAdjustment = (attachmentData = null, attachmentName = null) => {
-        // Add inputted amount directly to current dues balance
-        cust.balance += addedDues;
-        cust.lastTxn = new Date().toISOString().split('T')[0];
-
-        // Log adjustment entry (positive addedDues is debit, negative is credit)
-        state.ledgerEntries.push({
-          date: new Date().toISOString(),
-          phone: phone,
-          type: addedDues > 0 ? "debit" : "credit",
-          amount: Math.abs(addedDues),
-          ref: reason,
-          attachmentData: attachmentData,
-          attachmentName: attachmentName
-        });
-
-        saveCustomersToStorage();
-        saveLedgerToStorage();
-
-        adjustModal.classList.remove("active");
-        renderLedger();
-      };
-
-      if (file) {
-        // File validation (limit to 5MB for storage safety)
-        if (file.size > 5 * 1024 * 1024) {
-          alert("File size exceeds 5MB limit. Please upload a smaller file.");
+        if (isNaN(addedDues) || addedDues === 0) {
+          alert("Please enter a valid dues adjustment amount (e.g. 500 to add, -200 to subtract).");
           return;
         }
 
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          saveAdjustment(evt.target.result, file.name || "camera_photo.jpg");
+        const cust = state.customers.find(c => String(c.phone).trim() === String(phone).trim());
+        if (!cust) {
+          alert("Customer account could not be found for phone: " + phone);
+          return;
+        }
+
+        const saveAdjustment = (attachmentData = null, attachmentName = null) => {
+          const currentBal = parseFloat(cust.balance) || 0;
+          cust.balance = Number((currentBal + addedDues).toFixed(2));
+          cust.lastTxn = new Date().toISOString().split('T')[0];
+
+          // Log adjustment entry (positive addedDues is debit, negative is credit)
+          state.ledgerEntries.push({
+            date: new Date().toISOString(),
+            phone: String(cust.phone),
+            type: addedDues > 0 ? "debit" : "credit",
+            amount: Math.abs(addedDues),
+            ref: reason,
+            attachmentData: attachmentData,
+            attachmentName: attachmentName
+          });
+
+          saveCustomersToStorage();
+          saveLedgerToStorage();
+
+          const modalEl = document.getElementById("adjust-dues-modal");
+          if (modalEl) modalEl.classList.remove("active");
+          renderLedger();
         };
-        reader.onerror = function() {
-          alert("Error reading attachment file. Saving adjustment without attachment.");
+
+        if (file) {
+          if (file.size > 5 * 1024 * 1024) {
+            alert("File size exceeds 5MB limit. Please upload a smaller file.");
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = function(evt) {
+            saveAdjustment(evt.target.result, file.name || "camera_photo.jpg");
+          };
+          reader.onerror = function() {
+            alert("Error reading attachment file. Saving adjustment without attachment.");
+            saveAdjustment();
+          };
+          reader.readAsDataURL(file);
+        } else {
           saveAdjustment();
-        };
-        reader.readAsDataURL(file);
-      } else {
-        saveAdjustment();
+        }
+      } catch (err) {
+        console.error("Error processing adjustment:", err);
+        alert("An error occurred while saving the adjustment: " + err.message);
       }
     });
   }
