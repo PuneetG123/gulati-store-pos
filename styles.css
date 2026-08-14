@@ -251,8 +251,12 @@ input, select, textarea, button {
   flex-grow: 1;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 32px;
   position: relative;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: auto;
 }
 
 .page-view {
@@ -260,6 +264,7 @@ input, select, textarea, button {
   animation: fadeIn 0.4s ease-out forwards;
   max-width: 1400px;
   margin: 0 auto;
+  touch-action: pan-y;
 }
 
 .page-view.active {
@@ -605,6 +610,9 @@ input, select, textarea, button {
 
 .table-responsive {
   overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
 }
 
 table {
