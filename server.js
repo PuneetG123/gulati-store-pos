@@ -437,6 +437,173 @@ app.post('/api/save', authenticateToken, async (req, res) => {
   }
 });
 
+// Atomic Multi-Device Sync Routes
+app.post('/api/adjust-dues', authenticateToken, async (req, res) => {
+  const { phone, addedDues, reason, attachmentData, attachmentName } = req.body;
+  if (!phone || isNaN(addedDues)) return res.status(400).json({ error: "Invalid parameters" });
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const phoneStr = String(phone).trim();
+
+    let cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [phoneStr]);
+    if (!cust) {
+      await dbRun(
+        "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, 0, ?, ?)",
+        [phoneStr, "Customer " + phoneStr, addedDues, today]
+      );
+    } else {
+      await dbRun(
+        "UPDATE customers SET balance = balance + ?, \"lastTxn\" = ? WHERE phone = ?",
+        [addedDues, today, phoneStr]
+      );
+    }
+
+    const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
+    try {
+      await dbRun(
+        "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [id, phoneStr, new Date().toISOString(), addedDues > 0 ? "debit" : "credit", Math.abs(addedDues), reason || 'Balance Adjustment', attachmentData || null, attachmentName || null]
+      );
+    } catch(e) {
+      await dbRun(
+        "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
+        [new Date().toISOString(), phoneStr, addedDues > 0 ? "debit" : "credit", Math.abs(addedDues), reason || 'Balance Adjustment']
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    handleDatabaseError(err, res, "Failed to adjust dues");
+  }
+});
+
+app.post('/api/record-payment', authenticateToken, async (req, res) => {
+  const { phone, amountPaid, paymentMethod } = req.body;
+  if (!phone || isNaN(amountPaid) || amountPaid <= 0) return res.status(400).json({ error: "Invalid parameters" });
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const phoneStr = String(phone).trim();
+
+    await dbRun(
+      "UPDATE customers SET balance = balance - ?, \"lastTxn\" = ? WHERE phone = ?",
+      [amountPaid, today, phoneStr]
+    );
+
+    const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
+    try {
+      await dbRun(
+        "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, 'credit', ?, ?)",
+        [id, phoneStr, new Date().toISOString(), amountPaid, paymentMethod || 'Cash']
+      );
+    } catch(e) {
+      await dbRun(
+        "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, 'credit', ?, ?)",
+        [new Date().toISOString(), phoneStr, amountPaid, paymentMethod || 'Cash']
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    handleDatabaseError(err, res, "Failed to record payment");
+  }
+});
+
+app.post('/api/add-transaction', authenticateToken, async (req, res) => {
+  const t = req.body;
+  if (!t || !t.id) return res.status(400).json({ error: "Invalid transaction payload" });
+
+  try {
+    await dbRun(
+      "INSERT INTO transactions (id, date, \"customerName\", \"customerPhone\", subtotal, \"discountType\", \"discountValue\", \"discountAmount\", \"gstAmount\", \"totalPayable\", \"paymentMethod\", items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [t.id, t.date, t.customerName || '', t.customerPhone || '', t.subtotal || 0, t.discountType || 'flat', t.discountValue || 0, t.discountAmount || 0, t.gstAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', JSON.stringify(t.items || [])]
+    );
+
+    if (Array.isArray(t.items)) {
+      for (const item of t.items) {
+        if (item.product && item.product.sku && !item.product.isCustom) {
+          await dbRun(
+            "UPDATE products SET stock = stock - ? WHERE sku = ?",
+            [item.quantity || 1, String(item.product.sku)]
+          );
+        }
+      }
+    }
+
+    if (t.customerPhone && String(t.customerPhone).trim().length >= 10) {
+      const phoneStr = String(t.customerPhone).trim();
+      const nameStr = (t.customerName || "Customer " + phoneStr).trim();
+      const today = new Date().toISOString().split('T')[0];
+
+      let cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [phoneStr]);
+      const addedBalance = (t.paymentMethod === 'Credit') ? (t.totalPayable || 0) : 0;
+
+      if (!cust) {
+        await dbRun(
+          "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+          [phoneStr, nameStr, t.totalPayable || 0, addedBalance, today]
+        );
+      } else {
+        await dbRun(
+          "UPDATE customers SET \"totalPurchased\" = \"totalPurchased\" + ?, balance = balance + ?, \"lastTxn\" = ? WHERE phone = ?",
+          [t.totalPayable || 0, addedBalance, today, phoneStr]
+        );
+      }
+
+      if (t.paymentMethod === 'Credit') {
+        const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
+        try {
+          await dbRun(
+            "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, 'debit', ?, ?)",
+            [id, phoneStr, t.date || new Date().toISOString(), t.totalPayable || 0, t.id]
+          );
+        } catch(e) {}
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    handleDatabaseError(err, res, "Failed to save transaction");
+  }
+});
+
+app.post('/api/save-product', authenticateToken, async (req, res) => {
+  const p = req.body;
+  if (!p || !p.sku) return res.status(400).json({ error: "Product SKU required" });
+
+  try {
+    const sku = String(p.sku);
+    let existing = await dbGet("SELECT * FROM products WHERE sku = ?", [sku]);
+    if (!existing) {
+      await dbRun(
+        "INSERT INTO products (sku, name, category, hsn, \"costPrice\", \"sellingPrice\", \"gstSlab\", \"discountPercent\", stock, \"reorderLevel\", unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [sku, p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
+      );
+    } else {
+      await dbRun(
+        "UPDATE products SET name=?, category=?, hsn=?, \"costPrice\"=?, \"sellingPrice\"=?, \"gstSlab\"=?, \"discountPercent\"=?, stock=?, \"reorderLevel\"=?, unit=? WHERE sku=?",
+        [p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs', sku]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    handleDatabaseError(err, res, "Failed to save product");
+  }
+});
+
+app.post('/api/delete-product', authenticateToken, async (req, res) => {
+  const { sku } = req.body;
+  if (!sku) return res.status(400).json({ error: "Product SKU required" });
+
+  try {
+    await dbRun("DELETE FROM products WHERE sku = ?", [String(sku)]);
+    res.json({ success: true });
+  } catch (err) {
+    handleDatabaseError(err, res, "Failed to delete product");
+  }
+});
+
 // Save Store Settings API
 app.post('/api/save-printer', authenticateToken, async (req, res) => {
   const { printerName, autoPrint, gstin } = req.body;

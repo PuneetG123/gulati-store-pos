@@ -31,6 +31,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Initial renders
   renderAll();
 
+  // Real-Time Multi-Device Sync: Re-fetch latest server data whenever window gains focus
+  window.addEventListener("focus", async () => {
+    await initData();
+    renderAll();
+  });
+
+  // Background polling every 5 seconds to keep Tablet and Laptop 100% in sync
+  setInterval(async () => {
+    if (document.visibilityState === "visible") {
+      await initData();
+      renderAll();
+    }
+  }, 5000);
+
   // Scroll to Top Button Visibility Listener
   const mainContent = document.getElementById("main-content");
   const scrollTopBtn = document.getElementById("scroll-to-top-btn");
@@ -1137,38 +1151,19 @@ function checkoutCart() {
     paymentMethod: payMethod
   };
 
-  state.transactions.push(transaction);
-  saveTransactionsToStorage();
-
-  // Customer Ledger calculations
-  if (customerPhone) {
-    let cust = state.customers.find(c => c.phone === customerPhone);
-    if (!cust) {
-      cust = {
-        name: customerName,
-        phone: customerPhone,
-        totalPurchased: 0,
-        balance: 0,
-        lastTxn: new Date().toISOString().split('T')[0]
-      };
-      state.customers.push(cust);
-    }
-    cust.totalPurchased += payableTotal;
-    cust.lastTxn = new Date().toISOString().split('T')[0];
-
-    if (payMethod === 'Credit') {
-      cust.balance += payableTotal;
-      state.ledgerEntries.push({
-        date: new Date().toISOString(),
-        phone: customerPhone,
-        type: "debit",
-        amount: payableTotal,
-        ref: txnId
-      });
-    }
-    saveCustomersToStorage();
-    saveLedgerToStorage();
+  // Post atomic transaction to server database
+  try {
+    await fetch('/api/add-transaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(transaction)
+    });
+  } catch(err) {
+    console.error("Atomic add-transaction error:", err);
   }
+
+  // Refresh server state across devices
+  await initData();
 
   // Clear cart
   state.cart = [];
@@ -1614,7 +1609,7 @@ function renderInventory() {
   });
 }
 
-function saveProductForm() {
+async function saveProductForm() {
   const editSku = document.getElementById("prod-edit-id").value;
   let sku = document.getElementById("prod-sku").value.trim();
   const hsn = document.getElementById("prod-hsn").value.trim();
@@ -1629,33 +1624,25 @@ function saveProductForm() {
   const discountPercent = parseInt(document.getElementById("prod-discount").value) || 0;
 
   if (!sku) {
-    // Automatically generate a unique local SKU if barcode is empty/optional
     sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
   }
 
-  if (editSku) {
-    // Edit existing product
-    const index = state.products.findIndex(p => p.sku === editSku);
-    if (index !== -1) {
-      state.products[index] = {
-        sku: editSku, // keep original SKU
-        name, hsn, category, unit, costPrice, sellingPrice, gstSlab, stock, reorderLevel, discountPercent
-      };
-    }
-  } else {
-    // Check duplication
-    const duplicate = state.products.find(p => p.sku === sku);
-    if (duplicate) {
-      alert("A product with this Barcode/SKU already exists in inventory.");
-      return;
-    }
-    // Add new product
-    state.products.push({
-      sku, name, hsn, category, unit, costPrice, sellingPrice, gstSlab, stock, reorderLevel, discountPercent
+  const prodObj = {
+    sku: editSku || sku,
+    name, hsn, category, unit, costPrice, sellingPrice, gstSlab, stock, reorderLevel, discountPercent
+  };
+
+  try {
+    await fetch('/api/save-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(prodObj)
     });
+  } catch(err) {
+    console.error("Atomic save product error:", err);
   }
 
-  saveProductsToStorage();
+  await initData();
   document.getElementById("product-modal").classList.remove("active");
   renderAll();
 }
@@ -1684,10 +1671,18 @@ window.editProduct = function(sku) {
   document.getElementById("product-modal").classList.add("active");
 };
 
-window.deleteProduct = function(sku) {
+window.deleteProduct = async function(sku) {
   if (confirm(`Are you sure you want to delete product SKU: ${sku} from inventory?`)) {
-    state.products = state.products.filter(p => p.sku !== sku);
-    saveProductsToStorage();
+    try {
+      await fetch('/api/delete-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ sku })
+      });
+    } catch(err) {
+      console.error("Atomic delete product error:", err);
+    }
+    await initData();
     renderAll();
   }
 };
@@ -2444,7 +2439,7 @@ document.getElementById("payment-modal-cancel-btn").addEventListener("click", ()
 });
 
 // Log payment submit handler
-document.getElementById("ledger-payment-form").addEventListener("submit", (e) => {
+document.getElementById("ledger-payment-form").addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const phone = document.getElementById("payment-cust-phone").value;
@@ -2456,27 +2451,25 @@ document.getElementById("ledger-payment-form").addEventListener("submit", (e) =>
     return;
   }
 
-  const cust = state.customers.find(c => c.phone === phone);
-  if (cust) {
-    // Deduct balance (allows negative balance if they pre-pay / pay more than dues)
-    cust.balance = cust.balance - amountPaid;
-    cust.lastTxn = new Date().toISOString().split('T')[0];
-
-    // Log payment credit entry
-    state.ledgerEntries.push({
-      date: new Date().toISOString(),
-      phone: phone,
-      type: "credit",
-      amount: amountPaid,
-      ref: method
+  try {
+    await fetch('/api/record-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({
+        phone: String(phone),
+        amountPaid: amountPaid,
+        paymentMethod: method
+      })
     });
-
-    saveCustomersToStorage();
-    saveLedgerToStorage();
-
-    document.getElementById("payment-modal").classList.remove("active");
-    renderLedger();
+  } catch(err) {
+    console.error("Atomic record payment error:", err);
   }
+
+  // Refresh server state across devices
+  await initData();
+
+  document.getElementById("payment-modal").classList.remove("active");
+  renderLedger();
 });
 
 function updatePOSCustomerDatalists() {
@@ -2620,24 +2613,25 @@ function setupCustomerLedgerActions() {
           return;
         }
 
-        const saveAdjustment = (attachmentData = null, attachmentName = null) => {
-          const currentBal = parseFloat(cust.balance) || 0;
-          cust.balance = Number((currentBal + addedDues).toFixed(2));
-          cust.lastTxn = new Date().toISOString().split('T')[0];
+        const saveAdjustment = async (attachmentData = null, attachmentName = null) => {
+          try {
+            await fetch('/api/adjust-dues', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              body: JSON.stringify({
+                phone: String(phone),
+                addedDues: addedDues,
+                reason: reason,
+                attachmentData: attachmentData,
+                attachmentName: attachmentName
+              })
+            });
+          } catch(err) {
+            console.error("Atomic adjust dues error:", err);
+          }
 
-          // Log adjustment entry (positive addedDues is debit, negative is credit)
-          state.ledgerEntries.push({
-            date: new Date().toISOString(),
-            phone: String(cust.phone),
-            type: addedDues > 0 ? "debit" : "credit",
-            amount: Math.abs(addedDues),
-            ref: reason,
-            attachmentData: attachmentData,
-            attachmentName: attachmentName
-          });
-
-          saveCustomersToStorage();
-          saveLedgerToStorage();
+          // Fetch latest server data to merge instantly across devices
+          await initData();
 
           const modalEl = document.getElementById("adjust-dues-modal");
           if (modalEl) modalEl.classList.remove("active");
