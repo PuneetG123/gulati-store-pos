@@ -1669,12 +1669,43 @@ window.deleteProduct = function(sku) {
 // VIEW 4: TRANSACTIONS HISTORICAL LEDGER
 // ----------------------------------------------------
 let txnSearchQuery = "";
+let txnDateFilter = "";
+
+function getLocalDateString(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function setupTransactionsLedger() {
-  document.getElementById("txn-search-input").addEventListener("input", (e) => {
-    txnSearchQuery = e.target.value;
-    renderTransactions();
-  });
+  const searchInput = document.getElementById("txn-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      txnSearchQuery = e.target.value;
+      renderTransactions();
+    });
+  }
+
+  const dateInput = document.getElementById("txn-filter-date");
+  if (dateInput) {
+    dateInput.addEventListener("change", (e) => {
+      txnDateFilter = e.target.value;
+      renderTransactions();
+    });
+  }
+
+  const clearDateBtn = document.getElementById("txn-clear-date-btn");
+  if (clearDateBtn) {
+    clearDateBtn.addEventListener("click", () => {
+      if (dateInput) dateInput.value = "";
+      txnDateFilter = "";
+      renderTransactions();
+    });
+  }
 }
 
 function renderTransactions() {
@@ -1682,17 +1713,28 @@ function renderTransactions() {
   if (!tableBody) return;
   tableBody.innerHTML = "";
 
+  const query = (txnSearchQuery || "").trim().toLowerCase();
+
   const filtered = state.transactions.filter(t => {
-    return t.id.includes(txnSearchQuery) ||
-           t.customerName.toLowerCase().includes(txnSearchQuery.toLowerCase()) ||
-           t.customerPhone.includes(txnSearchQuery);
+    const matchesSearch = !query ||
+           (t.id && t.id.toLowerCase().includes(query)) ||
+           (t.customerName && t.customerName.toLowerCase().includes(query)) ||
+           (t.customerPhone && t.customerPhone.includes(query));
+
+    let matchesDate = true;
+    if (txnDateFilter) {
+      const txnDateStr = getLocalDateString(t.date);
+      matchesDate = (txnDateStr === txnDateFilter);
+    }
+
+    return matchesSearch && matchesDate;
   });
 
   // Sort descending by date
   const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   if (sorted.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:30px;">No transactions recorded yet.</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:30px;">No transactions recorded matching the selected filters.</td></tr>`;
     return;
   }
 
@@ -1700,14 +1742,14 @@ function renderTransactions() {
     const tr = document.createElement("tr");
     
     // Count total items
-    const itemCount = t.items.reduce((acc, curr) => acc + curr.quantity, 0);
+    const itemCount = Array.isArray(t.items) ? t.items.reduce((acc, curr) => acc + (curr.quantity || 0), 0) : 0;
 
     tr.innerHTML = `
       <td>${formatDate(t.date)}</td>
       <td><strong>${t.id}</strong></td>
       <td>
-        <div>${t.customerName}</div>
-        <div style="font-size:11px; color:var(--text-muted);">${t.customerPhone || 'Walk-in'}</div>
+        <div>${t.customerName || 'Walk-in Customer'}</div>
+        <div style="font-size:11px; color:var(--text-muted);">${t.customerPhone || 'N/A'}</div>
       </td>
       <td>${itemCount} items</td>
       <td>${formatRupee(t.subtotal)}</td>

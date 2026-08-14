@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -413,10 +413,14 @@
           </div>
         </div>
         
-        <div class="txn-search-group">
-          <div class="search-wrapper">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <div class="txn-search-group" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+          <div class="search-wrapper" style="flex:1; min-width:260px;">
             <input type="text" id="txn-search-input" class="form-control" placeholder="Search by Invoice ID, Client Name or Phone...">
+          </div>
+          <div class="filter-group" style="display:flex; gap:8px; align-items:center;">
+            <label for="txn-filter-date" style="font-size:13px; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Date Filter:</label>
+            <input type="date" id="txn-filter-date" class="form-control" style="width: auto; min-width: 160px; height: 42px;">
+            <button class="btn btn-secondary" id="txn-clear-date-btn" style="height:42px; padding:0 12px; font-size:12px;" title="Clear Date Filter">Clear Date</button>
           </div>
         </div>
         
@@ -1188,7 +1192,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="initial-data.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
