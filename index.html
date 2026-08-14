@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -854,6 +854,11 @@
         <p>POS Billing & Ledger Security Access</p>
       </div>
       
+      <!-- Direct Input for Touch/Physical Keyboards -->
+      <div style="margin-bottom: 14px;">
+        <input type="password" id="login-pin-input" class="form-control" maxlength="4" pattern="\d{4}" placeholder="••••" autocomplete="off" style="text-align: center; font-size: 26px; letter-spacing: 12px; font-weight: 700; background: rgba(15, 23, 42, 0.7); border: 2px solid var(--primary); color: #fff; height: 48px; border-radius: 10px;">
+      </div>
+
       <!-- PIN Indicators -->
       <div class="pin-display">
         <div class="pin-dot"></div>
@@ -863,25 +868,25 @@
       </div>
       
       <!-- Error Message -->
-      <div id="login-error-msg" class="login-error">Incorrect PIN. Please try again.</div>
+      <div id="login-error-msg" class="login-error">Incorrect PIN. Default PIN is 1234.</div>
       
       <!-- Keyboard Pin Pad -->
       <div class="pin-pad">
-        <button class="pin-btn" onclick="pressPinNumber(1)">1</button>
-        <button class="pin-btn" onclick="pressPinNumber(2)">2</button>
-        <button class="pin-btn" onclick="pressPinNumber(3)">3</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(1)" ontouchstart="pressPinNumber(1); event.preventDefault();">1</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(2)" ontouchstart="pressPinNumber(2); event.preventDefault();">2</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(3)" ontouchstart="pressPinNumber(3); event.preventDefault();">3</button>
         
-        <button class="pin-btn" onclick="pressPinNumber(4)">4</button>
-        <button class="pin-btn" onclick="pressPinNumber(5)">5</button>
-        <button class="pin-btn" onclick="pressPinNumber(6)">6</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(4)" ontouchstart="pressPinNumber(4); event.preventDefault();">4</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(5)" ontouchstart="pressPinNumber(5); event.preventDefault();">5</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(6)" ontouchstart="pressPinNumber(6); event.preventDefault();">6</button>
         
-        <button class="pin-btn" onclick="pressPinNumber(7)">7</button>
-        <button class="pin-btn" onclick="pressPinNumber(8)">8</button>
-        <button class="pin-btn" onclick="pressPinNumber(9)">9</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(7)" ontouchstart="pressPinNumber(7); event.preventDefault();">7</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(8)" ontouchstart="pressPinNumber(8); event.preventDefault();">8</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(9)" ontouchstart="pressPinNumber(9); event.preventDefault();">9</button>
         
-        <button class="pin-btn clear" onclick="clearPin()">C</button>
-        <button class="pin-btn" onclick="pressPinNumber(0)">0</button>
-        <button class="pin-btn backspace" onclick="backspacePin()">
+        <button type="button" class="pin-btn clear" onclick="clearPin()" ontouchstart="clearPin(); event.preventDefault();">C</button>
+        <button type="button" class="pin-btn" onclick="pressPinNumber(0)" ontouchstart="pressPinNumber(0); event.preventDefault();">0</button>
+        <button type="button" class="pin-btn backspace" onclick="backspacePin()" ontouchstart="backspacePin(); event.preventDefault();">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
         </button>
       </div>
@@ -1102,7 +1107,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="initial-data.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
