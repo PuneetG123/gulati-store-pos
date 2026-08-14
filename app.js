@@ -813,6 +813,8 @@ function renderPOSCart() {
     
     // Clear display amounts
     document.getElementById("summary-subtotal").innerText = formatRupee(0);
+    const taxTotalEl = document.getElementById("summary-tax-total");
+    if (taxTotalEl) taxTotalEl.innerText = formatRupee(0);
     document.getElementById("summary-cgst").innerText = formatRupee(0);
     document.getElementById("summary-sgst").innerText = formatRupee(0);
     document.getElementById("summary-discount").innerText = formatRupee(0);
@@ -895,6 +897,8 @@ function renderPOSCart() {
 
   // Update summary fields
   document.getElementById("summary-subtotal").innerText = formatRupee(totalTaxableSubtotal);
+  const taxTotalEl = document.getElementById("summary-tax-total");
+  if (taxTotalEl) taxTotalEl.innerText = formatRupee(totalGstAmount);
   document.getElementById("summary-cgst").innerText = formatRupee(cgstAmount);
   document.getElementById("summary-sgst").innerText = formatRupee(sgstAmount);
   document.getElementById("summary-discount").innerText = "-" + formatRupee(totalDiscount);

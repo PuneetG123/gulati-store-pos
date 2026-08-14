@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gulati-store-pos-v10';
+const CACHE_NAME = 'gulati-store-pos-v11';
 const ASSETS = [
   './',
   './index.html',

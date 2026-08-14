@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=11">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -267,15 +267,15 @@
               <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" id="pos-clear-cart-btn">Clear Cart</button>
             </div>
             
-            <!-- Customer Detail Onboarding -->
-            <div class="cart-onboarding" style="margin-top:10px;">
-              <input type="text" id="pos-customer-name" placeholder="Customer Name" class="form-control" list="pos-customer-names-list">
+            <!-- Customer Detail Onboarding (Compact 2-column grid) -->
+            <div class="cart-onboarding" style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+              <input type="text" id="pos-customer-name" placeholder="Customer Name" class="form-control" style="height:34px; font-size:12px;" list="pos-customer-names-list">
               <datalist id="pos-customer-names-list"></datalist>
-              <input type="tel" id="pos-customer-phone" placeholder="Phone Number" class="form-control" maxlength="10" list="pos-customer-phones-list">
+              <input type="tel" id="pos-customer-phone" placeholder="Phone Number" class="form-control" style="height:34px; font-size:12px;" maxlength="10" list="pos-customer-phones-list">
               <datalist id="pos-customer-phones-list"></datalist>
             </div>
             
-            <!-- Active items list (Scrollable middle container) -->
+            <!-- Active items list (Scrollable middle container - Maximized vertical space) -->
             <div class="cart-items-wrapper" id="pos-cart-items">
               <!-- Empty Cart State -->
               <div class="empty-cart-state" id="pos-empty-state">
@@ -284,47 +284,44 @@
               </div>
             </div>
             
-            <!-- Checkout totals calc drawer (Pinned at bottom) -->
-            <div class="pos-cart-summary">
-              <div class="summary-row">
-                <span>Subtotal (Excl. Tax)</span>
-                <span id="summary-subtotal">₹0.00</span>
-              </div>
-              <div class="summary-row">
-                <span>CGST</span>
-                <span id="summary-cgst">₹0.00</span>
-              </div>
-              <div class="summary-row">
-                <span>SGST</span>
-                <span id="summary-sgst">₹0.00</span>
-              </div>
-              <div class="summary-row">
-                <div class="discount-select-group">
-                  <select id="pos-discount-type">
-                    <option value="flat">Discount (₹)</option>
-                    <option value="percentage">Discount (%)</option>
-                  </select>
-                  <input type="number" id="pos-discount-value" value="0" min="0" class="form-control" style="width: 70px; height: 24px; padding: 2px 6px;">
+            <!-- Checkout totals calc drawer (Compact Pinned Summary Drawer) -->
+            <div class="pos-cart-summary" style="padding:10px 12px; gap:6px;">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px 16px; font-size:12px;">
+                <div style="display:flex; justify-content:space-between; color:var(--text-secondary);">
+                  <span>Subtotal:</span>
+                  <span id="summary-subtotal" style="font-weight:600;">₹0.00</span>
                 </div>
-                <span id="summary-discount">-₹0.00</span>
+                <div style="display:flex; justify-content:space-between; color:var(--text-secondary);">
+                  <span>GST Tax:</span>
+                  <span id="summary-tax-total" style="font-weight:600;">₹0.00</span>
+                  <span id="summary-cgst" style="display:none;">₹0.00</span>
+                  <span id="summary-sgst" style="display:none;">₹0.00</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; color:var(--text-secondary);">
+                  <div class="discount-select-group" style="display:flex; gap:4px; align-items:center;">
+                    <select id="pos-discount-type" style="padding:2px 4px; font-size:11px; height:24px; background:var(--bg-main); border:1px solid var(--border-color); color:var(--text-primary); border-radius:4px;">
+                      <option value="flat">Disc (₹)</option>
+                      <option value="percentage">Disc (%)</option>
+                    </select>
+                    <input type="number" id="pos-discount-value" value="0" min="0" class="form-control" style="width: 55px; height: 24px; padding: 2px 4px; font-size:11px;">
+                  </div>
+                  <span id="summary-discount" style="font-weight:600; color:var(--success);">-₹0.00</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:700; font-size:14px; color:var(--text-primary);">Total:</span>
+                  <span id="summary-total" style="font-weight:800; font-size:16px; color:var(--primary);">₹0.00</span>
+                </div>
               </div>
               
-              <div class="summary-row total">
-                <span>Total Payable</span>
-                <span id="summary-total">₹0.00</span>
-              </div>
-              
-              <div class="pos-cart-controls">
-                <div class="form-group" style="margin-bottom:0;">
-                  <select id="pos-payment-method" class="form-control" style="height:40px;">
-                    <option value="UPI">Pay via UPI</option>
-                    <option value="Cash">Pay via Cash</option>
-                    <option value="Card">Pay via Card</option>
-                    <option value="Wallet">Mobile Wallet</option>
-                    <option value="Credit">Credit / Khata Account</option>
-                  </select>
-                </div>
-                <button class="btn btn-primary" id="pos-checkout-btn" style="height:40px;">Pay & Print Bill</button>
+              <div class="pos-cart-controls" style="display:grid; grid-template-columns: 1fr 1.2fr; gap:8px; margin-top:4px;">
+                <select id="pos-payment-method" class="form-control" style="height:36px; font-size:12px; padding:4px 8px;">
+                  <option value="UPI">Pay via UPI</option>
+                  <option value="Cash">Pay via Cash</option>
+                  <option value="Card">Pay via Card</option>
+                  <option value="Wallet">Mobile Wallet</option>
+                  <option value="Credit">Credit / Khata Account</option>
+                </select>
+                <button class="btn btn-primary" id="pos-checkout-btn" style="height:36px; font-size:13px; font-weight:700;">Pay & Print Bill</button>
               </div>
             </div>
           </div>
@@ -1192,7 +1189,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="initial-data.js?v=11"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
