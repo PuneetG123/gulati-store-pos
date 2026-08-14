@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=7">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -854,11 +854,6 @@
         <p>POS Billing & Ledger Security Access</p>
       </div>
       
-      <!-- Direct Input for Touch/Physical Keyboards -->
-      <div style="margin-bottom: 14px;">
-        <input type="password" id="login-pin-input" class="form-control" maxlength="4" pattern="\d{4}" placeholder="••••" autocomplete="off" style="text-align: center; font-size: 26px; letter-spacing: 12px; font-weight: 700; background: rgba(15, 23, 42, 0.7); border: 2px solid var(--primary); color: #fff; height: 48px; border-radius: 10px;">
-      </div>
-
       <!-- PIN Indicators -->
       <div class="pin-display">
         <div class="pin-dot"></div>
@@ -868,7 +863,7 @@
       </div>
       
       <!-- Error Message -->
-      <div id="login-error-msg" class="login-error">Incorrect PIN. Default PIN is 1234.</div>
+      <div id="login-error-msg" class="login-error">Incorrect PIN. Please try again.</div>
       
       <!-- Keyboard Pin Pad -->
       <div class="pin-pad">
@@ -1107,7 +1102,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="initial-data.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -2650,7 +2650,7 @@ function hideLoginScreen() {
 
 window.pressPinNumber = function(num) {
   const now = Date.now();
-  if (now - lastPinPressTime < 150) return; // Prevent double-firing from touch + click events
+  if (now - lastPinPressTime < 150) return; // Prevent touch + click double triggers
   lastPinPressTime = now;
 
   if (enteredPin.length >= 4) return;
@@ -2658,7 +2658,7 @@ window.pressPinNumber = function(num) {
   updatePinDisplay();
   
   if (enteredPin.length === 4) {
-    setTimeout(submitPin, 100);
+    setTimeout(submitPin, 150);
   }
 };
 
@@ -2677,11 +2677,6 @@ window.backspacePin = function() {
 };
 
 function updatePinDisplay() {
-  const inputEl = document.getElementById('login-pin-input');
-  if (inputEl && inputEl.value !== enteredPin) {
-    inputEl.value = enteredPin;
-  }
-
   const dots = document.querySelectorAll('.pin-dot');
   dots.forEach((dot, idx) => {
     if (idx < enteredPin.length) {
@@ -2711,16 +2706,13 @@ function hidePinError() {
 }
 
 async function submitPin() {
-  const pinToSubmit = enteredPin;
-  if (!pinToSubmit || pinToSubmit.length !== 4) return;
-
   try {
     const response = await fetch('/api/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ pin: pinToSubmit })
+      body: JSON.stringify({ pin: enteredPin })
     });
     
     if (response.ok) {
@@ -2732,40 +2724,15 @@ async function submitPin() {
       // Retry loading the main application data
       await initData();
       renderAll();
-      return;
     } else {
       showPinError();
       clearPin();
-      return;
     }
   } catch (err) {
-    console.warn("Server login check failed, attempting offline PIN verification:", err);
-    if (pinToSubmit === "1234") {
-      hideLoginScreen();
-      clearPin();
-      renderAll();
-      return;
-    } else {
-      showPinError();
-      clearPin();
-    }
+    console.error("Login request failed:", err);
+    alert("Could not connect to POS server for verification.");
   }
 }
-
-// Input listener for direct PIN typing in password field
-document.addEventListener("DOMContentLoaded", () => {
-  const pinInput = document.getElementById('login-pin-input');
-  if (pinInput) {
-    pinInput.addEventListener('input', (e) => {
-      enteredPin = e.target.value.replace(/\D/g, '').slice(0, 4);
-      e.target.value = enteredPin;
-      updatePinDisplay();
-      if (enteredPin.length === 4) {
-        setTimeout(submitPin, 100);
-      }
-    });
-  }
-});
 
 // Keyboard listener for PIN entry
 document.addEventListener("keydown", (e) => {
@@ -2774,10 +2741,6 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   
-  if (document.activeElement && document.activeElement.id === 'login-pin-input') {
-    return; // Input event listener handles direct input box typing
-  }
-
   if (e.key >= '0' && e.key <= '9') {
     pressPinNumber(e.key);
   } else if (e.key === 'Backspace') {
