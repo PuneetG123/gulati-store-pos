@@ -61,9 +61,9 @@ async function initData() {
 
     if (response.ok) {
       const serverData = await response.json();
-      if (serverData && serverData.products && serverData.products.length > 0) {
+      if (serverData && ((serverData.products && serverData.products.length > 0) || (serverData.customers && serverData.customers.length > 0))) {
         loadedState = serverData;
-        console.log("Loaded data from SQLite server successfully.");
+        console.log("Loaded data from server database successfully.");
       }
     }
   } catch (err) {
@@ -74,16 +74,21 @@ async function initData() {
   if (!loadedState) {
     const localProducts = localStorage.getItem("fc_products");
     if (localProducts) {
-      loadedState = {
-        products: JSON.parse(localProducts),
-        transactions: JSON.parse(localStorage.getItem("fc_transactions") || "[]"),
-        customers: JSON.parse(localStorage.getItem("fc_customers") || "[]"),
-        ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
-      };
-      console.log("Loaded data from localStorage.");
-      
-      // Sync existing data up to SQLite server
-      syncToServer(loadedState);
+      try {
+        const prods = JSON.parse(localProducts);
+        if (Array.isArray(prods) && prods.length > 0) {
+          loadedState = {
+            products: prods,
+            transactions: JSON.parse(localStorage.getItem("fc_transactions") || "[]"),
+            customers: JSON.parse(localStorage.getItem("fc_customers") || "[]"),
+            ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
+          };
+          console.log("Loaded data from localStorage.");
+          syncToServer(loadedState);
+        }
+      } catch (e) {
+        console.error("Error parsing localStorage data:", e);
+      }
     }
   }
 
@@ -105,22 +110,20 @@ async function initData() {
       ]
     };
     console.log("Loaded default seeded data.");
-    
-    // Cache to local storage as backup
-    localStorage.setItem("fc_products", JSON.stringify(loadedState.products));
-    localStorage.setItem("fc_transactions", JSON.stringify(loadedState.transactions));
-    localStorage.setItem("fc_customers", JSON.stringify(loadedState.customers));
-    localStorage.setItem("fc_ledger", JSON.stringify(loadedState.ledgerEntries));
-    
-    // Save to SQLite server
     syncToServer(loadedState);
   }
 
   // Bind to application state
-  state.products = loadedState.products;
-  state.transactions = loadedState.transactions;
-  state.customers = loadedState.customers;
-  state.ledgerEntries = loadedState.ledgerEntries;
+  state.products = loadedState.products || [];
+  state.transactions = loadedState.transactions || [];
+  state.customers = loadedState.customers || [];
+  state.ledgerEntries = loadedState.ledgerEntries || [];
+
+  // Backup loaded state to local storage as browser cache backup
+  localStorage.setItem("fc_products", JSON.stringify(state.products));
+  localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+  localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+  localStorage.setItem("fc_ledger", JSON.stringify(state.ledgerEntries));
 
   // Bind settings
   state.settings = {};

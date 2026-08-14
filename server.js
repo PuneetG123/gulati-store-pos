@@ -376,50 +376,58 @@ app.post('/api/save', authenticateToken, async (req, res) => {
   }
 
   try {
-    // 1. Sync Products
-    await dbRun("DELETE FROM products");
-    for (const p of products) {
-      const sku = String(p.sku || p.id);
-      await dbRun(
-        "INSERT INTO products (sku, name, category, hsn, \"costPrice\", \"sellingPrice\", \"gstSlab\", \"discountPercent\", stock, \"reorderLevel\", unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [sku, p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
-      );
+    // 1. Sync Products (Safe Upsert / Replace)
+    if (Array.isArray(products) && products.length > 0) {
+      await dbRun("DELETE FROM products");
+      for (const p of products) {
+        const sku = String(p.sku || p.id);
+        await dbRun(
+          "INSERT INTO products (sku, name, category, hsn, \"costPrice\", \"sellingPrice\", \"gstSlab\", \"discountPercent\", stock, \"reorderLevel\", unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [sku, p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
+        );
+      }
     }
 
     // 2. Sync Transactions
-    await dbRun("DELETE FROM transactions");
-    for (const t of transactions) {
-      await dbRun(
-        "INSERT INTO transactions (id, date, \"customerName\", \"customerPhone\", subtotal, \"discountType\", \"discountValue\", \"discountAmount\", \"gstAmount\", \"totalPayable\", \"paymentMethod\", items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [t.id, t.date, t.customerName, t.customerPhone, t.subtotal, t.discountType || 'flat', t.discountValue || 0, t.discountAmount || 0, t.gstAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', JSON.stringify(t.items)]
-      );
+    if (Array.isArray(transactions) && transactions.length > 0) {
+      await dbRun("DELETE FROM transactions");
+      for (const t of transactions) {
+        await dbRun(
+          "INSERT INTO transactions (id, date, \"customerName\", \"customerPhone\", subtotal, \"discountType\", \"discountValue\", \"discountAmount\", \"gstAmount\", \"totalPayable\", \"paymentMethod\", items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [t.id, t.date, t.customerName, t.customerPhone, t.subtotal, t.discountType || 'flat', t.discountValue || 0, t.discountAmount || 0, t.gstAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', JSON.stringify(t.items)]
+        );
+      }
     }
 
     // 3. Sync Customers
-    await dbRun("DELETE FROM customers");
-    for (const c of customers) {
-      await dbRun(
-        "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
-        [c.phone, c.name, c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
-      );
+    if (Array.isArray(customers) && customers.length > 0) {
+      await dbRun("DELETE FROM customers");
+      for (const c of customers) {
+        await dbRun(
+          "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+          [c.phone, c.name, c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
+        );
+      }
     }
 
     // 4. Sync Ledger
-    try {
-      await dbRun("DELETE FROM customer_ledger");
-      for (const l of ledgerEntries) {
-        await dbRun(
-          "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone, l.date, l.type, l.amount, l.ref, l.attachmentData || null, l.attachmentName || null]
-        );
-      }
-    } catch (e) {
-      await dbRun("DELETE FROM ledgerEntries");
-      for (const l of ledgerEntries) {
-        await dbRun(
-          "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
-          [l.date, l.phone, l.type, l.amount, l.ref]
-        );
+    if (Array.isArray(ledgerEntries) && ledgerEntries.length > 0) {
+      try {
+        await dbRun("DELETE FROM customer_ledger");
+        for (const l of ledgerEntries) {
+          await dbRun(
+            "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone, l.date, l.type, l.amount, l.ref, l.attachmentData || null, l.attachmentName || null]
+          );
+        }
+      } catch (e) {
+        await dbRun("DELETE FROM ledgerEntries");
+        for (const l of ledgerEntries) {
+          await dbRun(
+            "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
+            [l.date, l.phone, l.type, l.amount, l.ref]
+          );
+        }
       }
     }
 
