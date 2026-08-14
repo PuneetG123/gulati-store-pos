@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=4">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -28,6 +28,9 @@
             <span>GST POS System</span>
           </div>
         </div>
+        <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" title="Toggle Navigation Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </button>
         <button id="mobile-menu-toggle" class="mobile-only-btn" style="display: none;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
@@ -36,33 +39,33 @@
       <nav id="sidebar-nav">
         <ul>
           <li class="nav-item active" data-page="dashboard">
-            <button id="nav-btn-dashboard">
+            <button id="nav-btn-dashboard" title="Dashboard">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-              Dashboard
+              <span>Dashboard</span>
             </button>
           </li>
           <li class="nav-item" data-page="pos">
-            <button id="nav-btn-pos">
+            <button id="nav-btn-pos" title="POS Billing">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
-              POS Billing
+              <span>POS Billing</span>
             </button>
           </li>
           <li class="nav-item" data-page="inventory">
-            <button id="nav-btn-inventory">
+            <button id="nav-btn-inventory" title="Inventory">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21.5 12H16c-.5 0-.9-.4-.9-.9V4.5M2.5 12h5.5c.5 0 .9-.4.9-.9V4.5M12 21.5V16c0-.5-.4-.9-.9-.9H4.5"/></svg>
-              Inventory
+              <span>Inventory</span>
             </button>
           </li>
           <li class="nav-item" data-page="transactions">
-            <button id="nav-btn-transactions">
+            <button id="nav-btn-transactions" title="Transactions">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              Transactions
+              <span>Transactions</span>
             </button>
           </li>
           <li class="nav-item" data-page="ledger">
-            <button id="nav-btn-ledger">
+            <button id="nav-btn-ledger" title="Khata Ledger">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              Khata Ledger
+              <span>Khata Ledger</span>
             </button>
           </li>
         </ul>
@@ -72,7 +75,7 @@
         <p>v1.2.0 &bull; GST Active</p>
         <button class="btn btn-secondary btn-sm" id="sidebar-change-pin-btn" onclick="openChangePinModal()" style="margin-top: 8px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          Store Settings
+          <span>Store Settings</span>
         </button>
       </div>
     </aside>
@@ -158,22 +161,7 @@
           <div class="pos-catalog-panel">
             <div class="pos-actions-header">
               <div class="search-wrapper">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="text" id="pos-search-input" class="form-control" placeholder="Search product by SKU or Name...">
-              </div>
-              
-              <!-- Scanner Simulator -->
-              <div class="scanner-card active" id="scanner-sim-card">
-                <div class="scanner-info">
-                  <div class="scanner-indicator"></div>
-                  <div>
-                    <h4>Scanner Input</h4>
-                    <span>Press Enter to Scan</span>
-                  </div>
-                </div>
-                <div class="scanner-input-box">
-                  <input type="text" id="pos-scanner-sim-input" placeholder="Scan SKU / Barcode">
-                </div>
               </div>
             </div>
             
@@ -194,14 +182,14 @@
             </div>
             
             <!-- Customer Detail Onboarding -->
-            <div class="cart-onboarding" style="margin-top:14px;">
+            <div class="cart-onboarding" style="margin-top:10px;">
               <input type="text" id="pos-customer-name" placeholder="Customer Name" class="form-control" list="pos-customer-names-list">
               <datalist id="pos-customer-names-list"></datalist>
               <input type="tel" id="pos-customer-phone" placeholder="Phone Number" class="form-control" maxlength="10" list="pos-customer-phones-list">
               <datalist id="pos-customer-phones-list"></datalist>
             </div>
             
-            <!-- Active items list -->
+            <!-- Active items list (Scrollable middle container) -->
             <div class="cart-items-wrapper" id="pos-cart-items">
               <!-- Empty Cart State -->
               <div class="empty-cart-state" id="pos-empty-state">
@@ -210,7 +198,7 @@
               </div>
             </div>
             
-            <!-- Checkout totals calc drawer -->
+            <!-- Checkout totals calc drawer (Pinned at bottom) -->
             <div class="pos-cart-summary">
               <div class="summary-row">
                 <span>Subtotal (Excl. Tax)</span>
@@ -284,7 +272,6 @@
         <!-- Filters panel -->
         <div class="inventory-actions">
           <div class="search-wrapper">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="inv-search-input" class="form-control" placeholder="Search by SKU, Name or HSN...">
           </div>
           
@@ -1115,7 +1102,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js"></script>
-  <script src="app.js"></script>
+  <script src="initial-data.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

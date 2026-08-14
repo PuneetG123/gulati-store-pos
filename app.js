@@ -18,6 +18,7 @@ let state = {
 // Initialize Application
 document.addEventListener("DOMContentLoaded", async () => {
   await initData();
+  setupSidebarToggle();
   setupNavigation();
   setupPOSCartActions();
   setupScannerSimulator();
@@ -712,16 +713,21 @@ function addToCart(sku) {
   const product = state.products.find(p => p.sku === sku);
   if (!product) return;
 
-  const existing = state.cart.find(item => item.product.sku === sku);
+  const existingIndex = state.cart.findIndex(item => (item.product.sku || item.product.id) === sku);
   
-  if (existing) {
-    if (existing.quantity >= product.stock) {
+  if (existingIndex !== -1) {
+    const existing = state.cart[existingIndex];
+    if (!existing.product.isCustom && existing.quantity >= product.stock) {
       alert(`Cannot add more. Available store inventory: ${product.stock} units.`);
       return;
     }
-    existing.quantity += 1;
+    existing.quantity = Number((existing.quantity + 1).toFixed(2));
+    // Move updated item to the top of the cart array so it is immediately visible!
+    state.cart.splice(existingIndex, 1);
+    state.cart.unshift(existing);
   } else {
-    state.cart.push({
+    // Unshift new item to the top of the cart array!
+    state.cart.unshift({
       product: { ...product },
       quantity: 1
     });
@@ -893,73 +899,78 @@ function renderPOSCart() {
   document.getElementById("summary-sgst").innerText = formatRupee(sgstAmount);
   document.getElementById("summary-discount").innerText = "-" + formatRupee(totalDiscount);
   document.getElementById("summary-total").innerText = formatRupee(payableTotal);
+
+  // Focus the top of the cart list where newly added/scanned items are unshifted
+  const cartWrapper = document.getElementById("pos-cart-items");
+  if (cartWrapper) {
+    cartWrapper.scrollTop = 0;
+  }
+}
+
+function setupSidebarToggle() {
+  const collapseBtn = document.getElementById("sidebar-collapse-btn");
+  const sidebar = document.getElementById("sidebar");
+  if (!collapseBtn || !sidebar) return;
+
+  // Restore saved collapse preference
+  const isCollapsed = localStorage.getItem("sidebar_collapsed") === "true";
+  if (isCollapsed) {
+    sidebar.classList.add("collapsed");
+  }
+
+  collapseBtn.addEventListener("click", () => {
+    sidebar.classList.toggle("collapsed");
+    localStorage.setItem("sidebar_collapsed", sidebar.classList.contains("collapsed"));
+  });
 }
 
 // ----------------------------------------------------
-// SCANNER SIMULATOR AUDIO & LOGIC
+// SCANNER SIMULATOR & AUDIO LOGIC
 // ----------------------------------------------------
 function setupScannerSimulator() {
   const scanInput = document.getElementById("pos-scanner-sim-input");
   const scannerCard = document.getElementById("scanner-sim-card");
 
-  scanInput.addEventListener("focus", () => {
-    scannerCard.classList.add("active");
-  });
+  if (scanInput && scannerCard) {
+    scanInput.addEventListener("focus", () => {
+      scannerCard.classList.add("active");
+    });
 
-  scanInput.addEventListener("blur", () => {
-    // Keep it green since listener is technically background, but for UI feedback:
-    scannerCard.classList.remove("active");
-  });
+    scanInput.addEventListener("blur", () => {
+      scannerCard.classList.remove("active");
+    });
 
-  // Intercept enter keypress
-  scanInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      const sku = scanInput.value.trim();
-      if (!sku) return;
+    scanInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const sku = scanInput.value.trim();
+        if (!sku) return;
 
-      // Find in products
-      const prod = state.products.find(p => p.sku === sku);
-      if (prod) {
-        if (prod.stock <= 0) {
-          alert(`${prod.name} is out of stock!`);
+        const prod = state.products.find(p => p.sku === sku);
+        if (prod) {
+          if (prod.stock <= 0) {
+            alert(`${prod.name} is out of stock!`);
+          } else {
+            addToCart(sku);
+          }
         } else {
-          addToCart(sku);
-          // Visual feedback glow
-          scanInput.style.backgroundColor = "hsla(142, 70%, 45%, 0.2)";
-          setTimeout(() => {
-            scanInput.style.backgroundColor = "var(--bg-main)";
-          }, 300);
+          alert(`Product with SKU "${sku}" not found in inventory.`);
         }
-      } else {
-        // Failed scan visual warning
-        scanInput.style.backgroundColor = "hsla(0, 84%, 60%, 0.2)";
-        setTimeout(() => {
-          scanInput.style.backgroundColor = "var(--bg-main)";
-        }, 300);
-        alert(`Product with SKU "${sku}" not found in inventory.`);
+        scanInput.value = "";
+        scanInput.focus();
       }
+    });
+  }
 
-      scanInput.value = ""; // clear
-      scanInput.focus(); // maintain focus
-    }
-  });
-
-  // Global keypress listener - if user is on POS billing view and starts typing a number, redirect focus to scanner
+  // Global keypress listener - if user is on POS billing view and starts typing a number, redirect focus to pos search input
   window.addEventListener("keydown", (e) => {
-    // Skip if focus is inside any existing input
     if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT") {
       return;
     }
     
-    // Only if active tab is POS
     if (state.activePage === 'pos') {
-      // Focus simulator box if alphanumeric key is pressed
-      if (/^[a-zA-Z0-9]$/.test(e.key)) {
-        scanInput.focus();
-        // Append typed character manually after focus delay
-        setTimeout(() => {
-          scanInput.value += e.key;
-        }, 10);
+      const searchInput = document.getElementById("pos-search-input");
+      if (searchInput && /^[a-zA-Z0-9]$/.test(e.key)) {
+        searchInput.focus();
       }
     }
   });

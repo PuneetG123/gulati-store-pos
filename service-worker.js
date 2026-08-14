@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gulati-store-pos-v1';
+const CACHE_NAME = 'gulati-store-pos-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -13,13 +13,13 @@ const ASSETS = [
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('Caching app shell assets...');
+      console.log('Caching app shell assets (v2)...');
       return cache.addAll(ASSETS);
     }).then(() => self.skipWaiting())
   );
 });
 
-// Activate Service Worker and clean old caches
+// Activate Service Worker and clean old caches immediately
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
@@ -35,36 +35,25 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Intercept requests and serve from cache if available, falling back to network
+// Network-First strategy for core app files to guarantee immediate updates on tablets
 self.addEventListener('fetch', (e) => {
-  // Only handle HTTP/HTTPS, skip other schemes (like chrome-extension or file)
   if (!e.request.url.startsWith(self.location.origin)) {
     return;
   }
   
-  // Skip intercepting POST API calls (e.g. database sync or login)
-  if (e.request.method !== 'GET') {
-    return;
-  }
-
-  // Skip caching API GET calls (e.g. /api/data) to prevent stale data
-  if (e.request.url.includes('/api/')) {
+  if (e.request.method !== 'GET' || e.request.url.includes('/api/')) {
     return;
   }
 
   e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch fresh copy in background to keep cache updated (stale-while-revalidate)
-        fetch(e.request).then((networkResponse) => {
-          if (networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, networkResponse));
-          }
-        }).catch(() => { /* ignore offline fetch errors */ });
-        
-        return cachedResponse;
+    fetch(e.request).then((networkResponse) => {
+      if (networkResponse && networkResponse.status === 200) {
+        const responseClone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, responseClone));
       }
-      return fetch(e.request);
+      return networkResponse;
+    }).catch(() => {
+      return caches.match(e.request);
     })
   );
 });
