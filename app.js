@@ -117,11 +117,24 @@ async function initData() {
   state.customers = loadedState.customers || [];
   state.ledgerEntries = loadedState.ledgerEntries || [];
 
-  // Backup loaded state to local storage as browser cache backup
-  localStorage.setItem("fc_products", JSON.stringify(state.products));
-  localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
-  localStorage.setItem("fc_customers", JSON.stringify(state.customers));
-  localStorage.setItem("fc_ledger", JSON.stringify(state.ledgerEntries));
+  // Backup loaded state to local storage as browser cache backup (safe try-catch)
+  try {
+    localStorage.setItem("fc_products", JSON.stringify(state.products));
+    localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+    localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+    
+    // Strip heavy base64 attachmentData from localStorage backup to stay under 5MB browser quota
+    const lightLedger = state.ledgerEntries.map(entry => {
+      if (entry.attachmentData) {
+        const { attachmentData, ...rest } = entry;
+        return rest;
+      }
+      return entry;
+    });
+    localStorage.setItem("fc_ledger", JSON.stringify(lightLedger));
+  } catch (e) {
+    console.warn("localStorage cache backup skipped due to quota limit:", e);
+  }
 
   // Bind settings
   state.settings = {};
@@ -170,22 +183,46 @@ async function syncToServer(overrideState = null) {
 }
 
 function saveCustomersToStorage() {
-  localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+  try {
+    localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+  } catch (e) {
+    console.warn("localStorage save failed for customers:", e);
+  }
   syncToServer();
 }
 
 function saveLedgerToStorage() {
-  localStorage.setItem("fc_ledger", JSON.stringify(state.ledgerEntries));
+  try {
+    // Strip heavy base64 attachmentData from localStorage backup to stay under 5MB browser quota
+    const lightLedger = state.ledgerEntries.map(entry => {
+      if (entry.attachmentData) {
+        const { attachmentData, ...rest } = entry;
+        return rest;
+      }
+      return entry;
+    });
+    localStorage.setItem("fc_ledger", JSON.stringify(lightLedger));
+  } catch (e) {
+    console.warn("localStorage save failed for fc_ledger due to quota limits:", e);
+  }
   syncToServer();
 }
 
 function saveProductsToStorage() {
-  localStorage.setItem("fc_products", JSON.stringify(state.products));
+  try {
+    localStorage.setItem("fc_products", JSON.stringify(state.products));
+  } catch (e) {
+    console.warn("localStorage save failed for products:", e);
+  }
   syncToServer();
 }
 
 function saveTransactionsToStorage() {
-  localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+  try {
+    localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+  } catch (e) {
+    console.warn("localStorage save failed for transactions:", e);
+  }
   syncToServer();
 }
 
