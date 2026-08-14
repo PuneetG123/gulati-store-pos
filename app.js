@@ -2529,6 +2529,15 @@ function setupCustomerLedgerActions() {
     adjustCancelBtn.addEventListener("click", () => adjustModal.classList.remove("active"));
   }
 
+  const cameraBtn = document.getElementById("adjust-camera-btn");
+  const cameraInput = document.getElementById("adjust-camera-attachment");
+
+  if (cameraBtn && cameraInput) {
+    cameraBtn.addEventListener("click", () => {
+      cameraInput.click();
+    });
+  }
+
   if (adjustForm) {
     adjustForm.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -2537,7 +2546,13 @@ function setupCustomerLedgerActions() {
       const addedDues = parseFloat(document.getElementById("adjust-new-dues").value);
       const reason = document.getElementById("adjust-reason").value.trim() || "Balance Adjustment";
       const attachmentInput = document.getElementById("adjust-attachment");
-      const file = attachmentInput && attachmentInput.files ? attachmentInput.files[0] : null;
+      
+      let file = null;
+      if (attachmentInput && attachmentInput.files && attachmentInput.files[0]) {
+        file = attachmentInput.files[0];
+      } else if (cameraInput && cameraInput.files && cameraInput.files[0]) {
+        file = cameraInput.files[0];
+      }
 
       if (isNaN(addedDues) || addedDues === 0) {
         alert("Please enter a valid dues adjustment amount (non-zero).");
@@ -2579,7 +2594,7 @@ function setupCustomerLedgerActions() {
 
         const reader = new FileReader();
         reader.onload = function(evt) {
-          saveAdjustment(evt.target.result, file.name);
+          saveAdjustment(evt.target.result, file.name || "camera_photo.jpg");
         };
         reader.onerror = function() {
           alert("Error reading attachment file. Saving adjustment without attachment.");
@@ -2634,6 +2649,9 @@ window.openAdjustDuesModal = function(phone) {
   
   const fileInput = document.getElementById("adjust-attachment");
   if (fileInput) fileInput.value = "";
+
+  const cameraInput = document.getElementById("adjust-camera-attachment");
+  if (cameraInput) cameraInput.value = "";
 
   document.getElementById("adjust-dues-modal").classList.add("active");
 };

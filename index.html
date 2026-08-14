@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -850,8 +850,15 @@
         </div>
         <div class="form-group">
           <label for="adjust-attachment">Attach Proof (Receipt / Image / PDF - Optional)</label>
-          <input type="file" id="adjust-attachment" class="form-control" accept="image/*,.pdf" style="padding:4px 6px; font-size:13px; height:auto;">
-          <small style="font-size:11px; color:var(--text-muted); display:block; margin-top:2px;">Upload file format: Images or PDF documents.</small>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="file" id="adjust-attachment" class="form-control" accept="image/*,.pdf" style="padding:4px 6px; font-size:13px; height:auto; flex:1;">
+            <button type="button" class="btn btn-secondary" id="adjust-camera-btn" style="height:36px; padding:0 10px; font-size:12px; display:flex; align-items:center; gap:4px; white-space:nowrap;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Camera
+            </button>
+          </div>
+          <input type="file" id="adjust-camera-attachment" accept="image/*" capture="environment" style="display:none;">
+          <small style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">Upload from gallery/file or take a photo directly using Camera.</small>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="adjust-dues-modal-cancel-btn">Cancel</button>
@@ -1189,7 +1196,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=12"></script>
-  <script src="app.js?v=12"></script>
+  <script src="initial-data.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
