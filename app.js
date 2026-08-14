@@ -56,10 +56,8 @@ async function initData() {
     
     if (response.status === 401) {
       showLoginScreen();
-      return; // Stop initialization until authenticated
-    }
-
-    if (response.ok) {
+      // Continue to initialize local cached data so navigation tabs work
+    } else if (response.ok) {
       const serverData = await response.json();
       if (serverData && ((serverData.products && serverData.products.length > 0) || (serverData.customers && serverData.customers.length > 0))) {
         loadedState = serverData;
