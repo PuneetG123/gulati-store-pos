@@ -520,12 +520,8 @@ function renderPOSCatalog() {
       </div>
     `;
 
-    // Click handler to add to cart
+    // Click handler to add to cart (Allows billing even if out of stock)
     card.addEventListener("click", () => {
-      if (prod.stock <= 0) {
-        alert(`${prod.name} is currently out of stock!`);
-        return;
-      }
       addToCart(prod.sku);
     });
 
@@ -717,10 +713,6 @@ function addToCart(sku) {
   
   if (existingIndex !== -1) {
     const existing = state.cart[existingIndex];
-    if (!existing.product.isCustom && existing.quantity >= product.stock) {
-      alert(`Cannot add more. Available store inventory: ${product.stock} units.`);
-      return;
-    }
     existing.quantity = Number((existing.quantity + 1).toFixed(2));
     // Move updated item to the top of the cart array so it is immediately visible!
     state.cart.splice(existingIndex, 1);
@@ -741,15 +733,6 @@ function changeCartQty(sku, delta) {
   const cartItem = state.cart.find(item => item.product.sku === sku);
   if (!cartItem) return;
 
-  // If standard product, validate stock bounds
-  if (!cartItem.product.isCustom) {
-    const parentProduct = state.products.find(p => p.sku === sku);
-    if (parentProduct && (cartItem.quantity + delta) > parentProduct.stock) {
-      alert(`Cannot add more. Available store inventory: ${parentProduct.stock} units.`);
-      return;
-    }
-  }
-
   cartItem.quantity = Number((cartItem.quantity + delta).toFixed(2));
   if (cartItem.quantity <= 0.001) {
     state.cart = state.cart.filter(item => item.product.sku !== sku);
@@ -765,15 +748,6 @@ window.updateCartItemQtyDirectly = function(sku, value) {
   let qty = parseFloat(value);
   if (isNaN(qty) || qty <= 0) {
     qty = 1;
-  }
-
-  // If standard product, validate stock bounds
-  if (!cartItem.product.isCustom) {
-    const parentProduct = state.products.find(p => p.sku === sku);
-    if (parentProduct && qty > parentProduct.stock) {
-      alert(`Cannot add more. Available store inventory: ${parentProduct.stock} units.`);
-      qty = parentProduct.stock;
-    }
   }
 
   cartItem.quantity = Number(qty.toFixed(2));
@@ -950,11 +924,7 @@ function setupScannerSimulator() {
 
         const prod = state.products.find(p => p.sku === sku);
         if (prod) {
-          if (prod.stock <= 0) {
-            alert(`${prod.name} is out of stock!`);
-          } else {
-            addToCart(sku);
-          }
+          addToCart(sku);
         } else {
           alert(`Product with SKU "${sku}" not found in inventory.`);
         }
