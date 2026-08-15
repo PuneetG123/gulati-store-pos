@@ -1542,7 +1542,7 @@ tr:hover td {
   }
   
   #main-content {
-    padding: 20px;
+    padding: 20px 20px 100px 20px;
   }
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
