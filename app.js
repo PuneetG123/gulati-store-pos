@@ -1084,7 +1084,7 @@ function playBeep() {
 // ----------------------------------------------------
 // CHECKOUT & RECEIPT ENGINE
 // ----------------------------------------------------
-function checkoutCart() {
+async function checkoutCart() {
   if (state.cart.length === 0) return;
 
   const nameInput = document.getElementById("pos-customer-name");
