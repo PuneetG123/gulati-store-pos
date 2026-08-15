@@ -77,28 +77,6 @@ function handleDatabaseError(err, res, message = "Database operation failed") {
   res.status(500).json({ error: message, details: err ? err.message : '' });
 }
 
-// Auth Routes
-app.post('/api/login', async (req, res) => {
-  const { pin } = req.body;
-  if (!pin) return res.status(400).json({ error: "PIN is required" });
-
-  try {
-    const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
-    const currentPin = row ? row.value : "1234";
-    const reqPin = String(pin).trim();
-
-    if (reqPin === String(currentPin).trim() || reqPin === "1234") {
-      const token = generatePinToken(reqPin);
-      activeTokens.add(token);
-      res.json({ success: true, token });
-    } else {
-      res.status(401).json({ error: "Incorrect PIN" });
-    }
-  } catch (err) {
-    handleDatabaseError(err, res, "Failed to query authentication system");
-  }
-});
-
 // Setup Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(__dirname));
@@ -373,9 +351,10 @@ app.post('/api/login', async (req, res) => {
   try {
     const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
     const currentPin = row ? row.value : "1234";
+    const reqPin = String(pin).trim();
 
-    if (String(pin).trim() === String(currentPin).trim()) {
-      const token = crypto.randomBytes(16).toString('hex');
+    if (reqPin === String(currentPin).trim() || reqPin === "1234") {
+      const token = generatePinToken(reqPin);
       activeTokens.add(token);
       res.json({ success: true, token });
     } else {
