@@ -77,7 +77,13 @@ async function syncFromServer() {
     });
     if (response.ok) {
       const serverData = await response.json();
-      if (serverData && Array.isArray(serverData.products) && (serverData.products.length > 0 || serverData.customers.length > 0)) {
+      const hasServerContent = serverData && (
+        (Array.isArray(serverData.products) && serverData.products.length > 0) ||
+        (Array.isArray(serverData.customers) && serverData.customers.length > 0) ||
+        (Array.isArray(serverData.transactions) && serverData.transactions.length > 0)
+      );
+
+      if (hasServerContent) {
         state.products = serverData.products;
         state.transactions = serverData.transactions || [];
         state.customers = serverData.customers || [];
@@ -113,16 +119,22 @@ async function initData() {
       showLoginScreen();
     } else if (response.ok) {
       const serverData = await response.json();
-      if (serverData && Array.isArray(serverData.products)) {
+      const hasServerContent = serverData && (
+        (Array.isArray(serverData.products) && serverData.products.length > 0) ||
+        (Array.isArray(serverData.customers) && serverData.customers.length > 0) ||
+        (Array.isArray(serverData.transactions) && serverData.transactions.length > 0)
+      );
+
+      if (hasServerContent) {
         loadedState = serverData;
-        console.log("Loaded data from server database successfully.");
+        console.log("Loaded non-empty data from server database successfully.");
       }
     }
   } catch (err) {
     console.warn("Could not connect to database server, checking local storage:", err);
   }
 
-  // 2. If server database is unreachable, check local storage
+  // 2. If server database is empty or unreachable, try local storage
   if (!loadedState) {
     const localProducts = localStorage.getItem("fc_products");
     if (localProducts) {
@@ -135,7 +147,8 @@ async function initData() {
             customers: JSON.parse(localStorage.getItem("fc_customers") || "[]"),
             ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
           };
-          console.log("Loaded data from localStorage.");
+          console.log("Loaded non-empty data from localStorage.");
+          syncToServer(loadedState);
         }
       } catch (e) {
         console.error("Error parsing localStorage data:", e);
@@ -143,7 +156,7 @@ async function initData() {
     }
   }
 
-  // 3. If both are empty, load default seeded data
+  // 3. If both server AND local storage are empty, load default seeded grocery catalog
   if (!loadedState) {
     loadedState = {
       products: [...INITIAL_PRODUCTS],
@@ -160,7 +173,7 @@ async function initData() {
         { date: getDateDaysAgo(2) + "T12:00:00Z", phone: "9009009001", type: "credit", amount: 543.36, ref: "Cash" }
       ]
     };
-    console.log("Loaded default seeded data.");
+    console.log("Loaded default seeded grocery catalog.");
     syncToServer(loadedState);
   }
 
