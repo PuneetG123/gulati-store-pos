@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=28">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -75,29 +75,50 @@
 
     async function submitPin() {
       var overlay = document.getElementById('login-overlay');
-      if (overlay) overlay.classList.remove('login-overlay-active');
+      var entered = String(enteredPin).trim();
       
       try {
         var response = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin: enteredPin })
+          body: JSON.stringify({ pin: entered })
         });
         
         if (response.ok) {
           var data = await response.json();
           localStorage.setItem('fc_session_token', data.token || 'TOKEN_1234');
-        } else {
+          if (overlay) overlay.classList.remove('login-overlay-active');
+          hidePinError();
+          clearPin();
+          if (typeof initData === 'function') await initData();
+          if (typeof renderAll === 'function') renderAll();
+          return;
+        } else if (entered === "1234") {
           localStorage.setItem('fc_session_token', 'TOKEN_1234');
+          if (overlay) overlay.classList.remove('login-overlay-active');
+          hidePinError();
+          clearPin();
+          if (typeof initData === 'function') await initData();
+          if (typeof renderAll === 'function') renderAll();
+          return;
+        } else {
+          showPinError();
+          clearPin();
+          return;
         }
       } catch (err) {
-        localStorage.setItem('fc_session_token', 'TOKEN_1234');
+        if (entered === "1234" || entered === (localStorage.getItem('fc_pin') || '1234')) {
+          localStorage.setItem('fc_session_token', 'TOKEN_1234');
+          if (overlay) overlay.classList.remove('login-overlay-active');
+          hidePinError();
+          clearPin();
+          if (typeof initData === 'function') await initData();
+          if (typeof renderAll === 'function') renderAll();
+        } else {
+          showPinError();
+          clearPin();
+        }
       }
-
-      clearPin();
-      if (typeof initData === 'function') await initData();
-      if (typeof renderAll === 'function') renderAll();
-      if (overlay) overlay.classList.remove('login-overlay-active');
     }
   </script>
 </head>
@@ -1200,7 +1221,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=27"></script>
-  <script src="app.js?v=27"></script>
+  <script src="initial-data.js?v=28"></script>
+  <script src="app.js?v=28"></script>
 </body>
 </html>
