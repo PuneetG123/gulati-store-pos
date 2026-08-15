@@ -1192,34 +1192,44 @@ async function checkoutCart() {
     paymentMethod: payMethod
   };
 
-  // Post atomic transaction to server database
-  try {
-    await fetch('/api/add-transaction', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify(transaction)
-    });
-  } catch(err) {
-    console.error("Atomic add-transaction error:", err);
+  // Build receipt html template and show modal immediately
+  buildReceiptInvoice(transaction);
+  
+  // Show Receipt Modal instantly
+  document.getElementById("receipt-invoice-id").innerText = `Invoice No: ${txnId}`;
+  const receiptModal = document.getElementById("receipt-modal");
+  if (receiptModal) {
+    receiptModal.classList.add("active");
   }
 
-  // Refresh server state across devices
-  await initData();
-
-  // Clear cart
+  // Clear cart immediately
   state.cart = [];
   nameInput.value = "";
   phoneInput.value = "";
   document.getElementById("pos-discount-value").value = "0";
 
-  // Build receipt html template and show modal
-  buildReceiptInvoice(transaction);
-  
-  // Show Receipt Modal
-  document.getElementById("receipt-invoice-id").innerText = `Invoice No: ${txnId}`;
-  document.getElementById("receipt-modal").classList.add("active");
-
+  // Re-render local POS/Dashboard state instantly
   renderAll();
+
+  // Run database sync in the background (non-blocking)
+  (async () => {
+    try {
+      // Save local inventory changes to storage
+      saveProductsToStorage();
+
+      await fetch('/api/add-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(transaction)
+      });
+      
+      // Refresh server state across devices silently
+      await initData();
+      renderAll();
+    } catch(err) {
+      console.error("Background sync error:", err);
+    }
+  })();
 
   // Auto-Print Receipt if active
   if (state.settings.auto_print === "true") {
