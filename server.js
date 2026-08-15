@@ -47,16 +47,19 @@ function verifyPinToken(token, currentPin) {
 // Authentication Middleware
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  if (!authHeader) {
-    return next();
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Access denied. Auth token missing." });
   }
   
   const token = authHeader.split(' ')[1];
-  if (!token || token === 'TOKEN_1234' || token === 'OFFLINE_TOKEN_1234' || activeTokens.has(token) || verifyPinToken(token, "1234")) {
-    if (token) activeTokens.add(token);
-    return next();
+  if (!token) {
+    return res.status(401).json({ error: "Access denied. Invalid auth token format." });
   }
 
+  if (token === 'TOKEN_1234' || token === 'OFFLINE_TOKEN_1234' || activeTokens.has(token)) {
+    return next();
+  }
+  
   try {
     const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
     const currentPin = row ? row.value : "1234";
@@ -66,7 +69,7 @@ async function authenticateToken(req, res, next) {
     }
   } catch (err) {}
   
-  return next();
+  return res.status(401).json({ error: "Session expired or invalid. Please re-authenticate." });
 }
 
 function handleDatabaseError(err, res, message = "Database operation failed") {

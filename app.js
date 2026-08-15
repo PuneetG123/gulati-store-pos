@@ -107,113 +107,116 @@ async function syncFromServer() {
 // DATA PERSISTENCE & INITIALIZATION
 // ----------------------------------------------------
 async function initData() {
-  let loadedState = null;
-
-  // 1. Try to load from SQLite server with auth token
   try {
-    const response = await fetch('/api/data', {
-      headers: getAuthHeaders()
-    });
-    
-    if (response.ok) {
-      const serverData = await response.json();
-      const hasServerContent = serverData && (
-        (Array.isArray(serverData.products) && serverData.products.length > 0) ||
-        (Array.isArray(serverData.customers) && serverData.customers.length > 0) ||
-        (Array.isArray(serverData.transactions) && serverData.transactions.length > 0)
-      );
+    let loadedState = null;
 
-      if (hasServerContent) {
-        loadedState = serverData;
-        console.log("Loaded non-empty data from server database successfully.");
-      }
-    }
-  } catch (err) {
-    console.warn("Could not connect to database server, checking local storage:", err);
-  }
+    // 1. Try to load from SQLite server with auth token
+    try {
+      const response = await fetch('/api/data', {
+        headers: getAuthHeaders()
+      });
+      
+      if (response.status === 401) {
+        showLoginScreen();
+      } else if (response.ok) {
+        const serverData = await response.json();
+        const hasServerContent = serverData && (
+          (Array.isArray(serverData.products) && serverData.products.length > 0) ||
+          (Array.isArray(serverData.customers) && serverData.customers.length > 0) ||
+          (Array.isArray(serverData.transactions) && serverData.transactions.length > 0)
+        );
 
-  // 2. If server database is empty or unreachable, try local storage
-  if (!loadedState) {
-    const localProducts = localStorage.getItem("fc_products");
-    if (localProducts) {
-      try {
-        const prods = JSON.parse(localProducts);
-        if (Array.isArray(prods) && prods.length > 0) {
-          loadedState = {
-            products: prods,
-            transactions: JSON.parse(localStorage.getItem("fc_transactions") || "[]"),
-            customers: JSON.parse(localStorage.getItem("fc_customers") || "[]"),
-            ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
-          };
-          console.log("Loaded non-empty data from localStorage.");
-          syncToServer(loadedState);
+        if (hasServerContent) {
+          loadedState = serverData;
+          console.log("Loaded non-empty data from server database successfully.");
         }
-      } catch (e) {
-        console.error("Error parsing localStorage data:", e);
+      }
+    } catch (err) {
+      console.warn("Could not connect to database server, checking local storage:", err);
+    }
+
+    // 2. If server database is empty or unreachable, try local storage
+    if (!loadedState) {
+      const localProducts = localStorage.getItem("fc_products");
+      if (localProducts) {
+        try {
+          const prods = JSON.parse(localProducts);
+          if (Array.isArray(prods) && prods.length > 0) {
+            loadedState = {
+              products: prods,
+              transactions: JSON.parse(localStorage.getItem("fc_transactions") || "[]"),
+              customers: JSON.parse(localStorage.getItem("fc_customers") || "[]"),
+              ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
+            };
+            console.log("Loaded non-empty data from localStorage.");
+            syncToServer(loadedState);
+          }
+        } catch (e) {
+          console.error("Error parsing localStorage data:", e);
+        }
       }
     }
+
+    // 3. If both server AND local storage are empty, load default seeded grocery catalog
+    if (!loadedState) {
+      loadedState = {
+        products: [...INITIAL_PRODUCTS],
+        transactions: [...INITIAL_TRANSACTIONS],
+        customers: [
+          { name: "Rahul Sharma", phone: "9876543210", totalPurchased: 396.00, balance: 0.00, lastTxn: getDateDaysAgo(6) },
+          { name: "Priya Patel", phone: "9911223344", totalPurchased: 706.20, balance: 706.20, lastTxn: getDateDaysAgo(5) },
+          { name: "Aman Verma", phone: "9812345678", totalPurchased: 519.70, balance: 0.00, lastTxn: getDateDaysAgo(4) },
+          { name: "Sanjay Gupta", phone: "9009009001", totalPurchased: 943.36, balance: 400.00, lastTxn: getDateDaysAgo(3) }
+        ],
+        ledgerEntries: [
+          { date: getDateDaysAgo(5) + "T14:30:22Z", phone: "9911223344", type: "debit", amount: 706.20, ref: "TXN-902149" },
+          { date: getDateDaysAgo(3) + "T11:20:00Z", phone: "9009009001", type: "debit", amount: 943.36, ref: "TXN-902151" },
+          { date: getDateDaysAgo(2) + "T12:00:00Z", phone: "9009009001", type: "credit", amount: 543.36, ref: "Cash" }
+        ]
+      };
+      console.log("Loaded default seeded grocery catalog.");
+      syncToServer(loadedState);
+    }
+
+    // Bind to application state
+    state.products = loadedState.products || [];
+    state.transactions = loadedState.transactions || [];
+    state.customers = loadedState.customers || [];
+    state.ledgerEntries = loadedState.ledgerEntries || [];
+
+    // Backup loaded state to local storage as browser cache backup (safe try-catch)
+    try {
+      localStorage.setItem("fc_products", JSON.stringify(state.products));
+      localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+      localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+      
+      // Strip heavy base64 attachmentData from localStorage backup to stay under 5MB browser quota
+      const lightLedger = state.ledgerEntries.map(entry => {
+        if (entry.attachmentData) {
+          const { attachmentData, ...rest } = entry;
+          return rest;
+        }
+        return entry;
+      });
+      localStorage.setItem("fc_ledger", JSON.stringify(lightLedger));
+    } catch (e) {
+      console.warn("localStorage cache backup skipped due to quota limit:", e);
+    }
+
+    // Bind settings
+    state.settings = {};
+    if (loadedState.settings && Array.isArray(loadedState.settings)) {
+      loadedState.settings.forEach(s => {
+        state.settings[s.key] = s.value;
+      });
+    }
+    // Ensure default fallbacks are defined
+    if (!state.settings.printer_name) state.settings.printer_name = localStorage.getItem('fc_printer_name') || 'Default';
+    if (!state.settings.auto_print) state.settings.auto_print = localStorage.getItem('fc_auto_print') || 'false';
+    if (!state.settings.gstin) state.settings.gstin = localStorage.getItem('fc_gstin') || '07AAAAA1111A1Z1';
+  } catch (err) {
+    console.error("Critical error in initData:", err);
   }
-
-  // 3. If both server AND local storage are empty, load default seeded grocery catalog
-  if (!loadedState) {
-    loadedState = {
-      products: [...INITIAL_PRODUCTS],
-      transactions: [...INITIAL_TRANSACTIONS],
-      customers: [
-        { name: "Rahul Sharma", phone: "9876543210", totalPurchased: 396.00, balance: 0.00, lastTxn: getDateDaysAgo(6) },
-        { name: "Priya Patel", phone: "9911223344", totalPurchased: 706.20, balance: 706.20, lastTxn: getDateDaysAgo(5) },
-        { name: "Aman Verma", phone: "9812345678", totalPurchased: 519.70, balance: 0.00, lastTxn: getDateDaysAgo(4) },
-        { name: "Sanjay Gupta", phone: "9009009001", totalPurchased: 943.36, balance: 400.00, lastTxn: getDateDaysAgo(3) }
-      ],
-      ledgerEntries: [
-        { date: getDateDaysAgo(5) + "T14:30:22Z", phone: "9911223344", type: "debit", amount: 706.20, ref: "TXN-902149" },
-        { date: getDateDaysAgo(3) + "T11:20:00Z", phone: "9009009001", type: "debit", amount: 943.36, ref: "TXN-902151" },
-        { date: getDateDaysAgo(2) + "T12:00:00Z", phone: "9009009001", type: "credit", amount: 543.36, ref: "Cash" }
-      ]
-    };
-    console.log("Loaded default seeded grocery catalog.");
-    syncToServer(loadedState);
-  }
-
-  // Bind to application state
-  state.products = loadedState.products || [];
-  state.transactions = loadedState.transactions || [];
-  state.customers = loadedState.customers || [];
-  state.ledgerEntries = loadedState.ledgerEntries || [];
-
-  // Backup loaded state to local storage as browser cache backup (safe try-catch)
-  try {
-    localStorage.setItem("fc_products", JSON.stringify(state.products));
-    localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
-    localStorage.setItem("fc_customers", JSON.stringify(state.customers));
-    
-    // Strip heavy base64 attachmentData from localStorage backup to stay under 5MB browser quota
-    const lightLedger = state.ledgerEntries.map(entry => {
-      if (entry.attachmentData) {
-        const { attachmentData, ...rest } = entry;
-        return rest;
-      }
-      return entry;
-    });
-    localStorage.setItem("fc_ledger", JSON.stringify(lightLedger));
-  } catch (e) {
-    console.warn("localStorage cache backup skipped due to quota limit:", e);
-  }
-
-  // Bind settings
-  state.settings = {};
-  if (loadedState.settings && Array.isArray(loadedState.settings)) {
-    loadedState.settings.forEach(s => {
-      state.settings[s.key] = s.value;
-    });
-  }
-  // Ensure default fallbacks are defined
-  if (!state.settings.printer_name) state.settings.printer_name = localStorage.getItem('fc_printer_name') || 'Default';
-  if (!state.settings.auto_print) state.settings.auto_print = localStorage.getItem('fc_auto_print') || 'false';
-  if (!state.settings.gstin) state.settings.gstin = localStorage.getItem('fc_gstin') || '07AAAAA1111A1Z1';
-
-  // Render UI with initialized data
-  renderAll();
 }
 
 async function syncToServer(overrideState = null) {
@@ -390,8 +393,8 @@ function renderDashboard() {
   const todayStr = new Date().toISOString().split('T')[0];
   
   // 1. Calculations for Statistics
-  // Filter today's completed transactions
-  const todaysTxns = state.transactions.filter(t => t.date.startsWith(todayStr));
+  // Filter today's completed transactions safely
+  const todaysTxns = state.transactions.filter(t => t && t.date && typeof t.date === 'string' && t.date.startsWith(todayStr));
   
   const totalSalesToday = todaysTxns.reduce((acc, curr) => acc + curr.totalPayable, 0);
   const totalGstToday = todaysTxns.reduce((acc, curr) => acc + curr.gstAmount, 0);
@@ -453,9 +456,9 @@ function renderSalesTrendChart() {
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split('T')[0];
     
-    // Filter sales on this day
+    // Filter sales on this day safely
     const daySales = state.transactions
-      .filter(t => t.date.startsWith(dateStr))
+      .filter(t => t && t.date && typeof t.date === 'string' && t.date.startsWith(dateStr))
       .reduce((acc, curr) => acc + curr.totalPayable, 0);
 
     chartData.push({
@@ -2168,7 +2171,7 @@ function filterAndRenderStatement() {
   } else {
     renderedEntries.forEach(entry => {
       const tr = document.createElement("tr");
-      const isInvoice = entry.ref.startsWith("TXN-");
+      const isInvoice = entry.ref && typeof entry.ref === 'string' && entry.ref.startsWith("TXN-");
       const isStdPayment = ["Cash", "UPI", "Card", "Wallet"].includes(entry.ref);
       let detailsText = "";
       
@@ -2221,7 +2224,7 @@ function filterAndRenderStatement() {
     }
 
     renderedEntries.forEach(e => {
-      const isInv = e.ref.startsWith("TXN-");
+      const isInv = e.ref && typeof e.ref === 'string' && e.ref.startsWith("TXN-");
       const isPay = ["Cash", "UPI", "Card", "Wallet"].includes(e.ref);
       let printDetails = "";
       
@@ -2394,7 +2397,7 @@ function filterAndRenderStatement() {
         y += 10;
       }
 
-      const isInv = e.ref.startsWith("TXN-");
+      const isInv = e.ref && typeof e.ref === 'string' && e.ref.startsWith("TXN-");
       const isPay = ["Cash", "UPI", "Card", "Wallet"].includes(e.ref);
       let printDetails = "";
       
@@ -2754,8 +2757,8 @@ window.openAdjustDuesModal = function(phone) {
 // SECURITY PIN ENTRY & AUTHENTICATION HANDLERS
 // =======================================================
 function getAuthHeaders() {
-  const token = localStorage.getItem('fc_session_token') || 'TOKEN_1234';
-  return { 'Authorization': 'Bearer ' + token };
+  const token = localStorage.getItem('fc_session_token');
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
 }
 
 function showLoginScreen() {
