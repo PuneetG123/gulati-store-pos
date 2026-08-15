@@ -1454,6 +1454,11 @@ tr:hover td {
     grid-template-columns: 1fr !important;
     gap: 8px;
   }
+  .cart-items-wrapper {
+    flex: none !important;
+    height: auto !important;
+    overflow-y: visible !important;
+  }
 }
 
 @media (max-width: 900px) {
