@@ -688,6 +688,6 @@ app.post('/api/print-queue/ack', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`=======================================================`);
   console.log(` Gulati Store POS server is running on port ${PORT}!`);
-  console.log(` Database: ${DATABASE_URL ? 'Cloud PostgreSQL (Supabase)' : DB_FILE}`);
+  console.log(` Database: ${DATABASE_URL ? 'Cloud PostgreSQL (Supabase)' : 'GULATISTORE.db'}`);
   console.log(`=======================================================`);
 });
