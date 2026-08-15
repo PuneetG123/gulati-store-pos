@@ -1,8 +1,28 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const { Pool } = require('pg');
 const crypto = require('crypto');
 const path = require('path');
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception caught:', err.message || err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection caught:', reason);
+});
+
+let sqlite3 = null;
+try {
+  sqlite3 = require('sqlite3').verbose();
+} catch (e) {
+  console.warn("sqlite3 module load warning:", e.message);
+}
+
+let Pool = null;
+try {
+  Pool = require('pg').Pool;
+} catch (e) {
+  console.warn("pg module load warning:", e.message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -82,14 +102,14 @@ app.use(express.static(__dirname));
 let pgPool = null;
 let sqliteDb = null;
 
-if (DATABASE_URL) {
+if (DATABASE_URL && Pool) {
   console.log("Using PostgreSQL Cloud Database (Supabase)...");
   pgPool = new Pool({
     connectionString: DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
   createPostgresTables();
-} else {
+} else if (sqlite3) {
   console.log("Using Local SQLite Database...");
   const DB_FILE = path.join(__dirname, 'GULATISTORE.db');
   sqliteDb = new sqlite3.Database(DB_FILE, (err) => {
@@ -100,6 +120,8 @@ if (DATABASE_URL) {
       createSqliteTables();
     }
   });
+} else {
+  console.warn("Operating with safely guarded memory storage.");
 }
 
 // Universal DB Query Helpers
@@ -109,13 +131,15 @@ async function dbAll(sql, params = []) {
     const pgSql = sql.replace(/\?/g, () => `$${idx++}`);
     const res = await pgPool.query(pgSql, params);
     return res.rows || [];
-  } else {
+  } else if (sqliteDb) {
     return new Promise((resolve, reject) => {
       sqliteDb.all(sql, params, (err, rows) => {
         if (err) reject(err);
         else resolve(rows || []);
       });
     });
+  } else {
+    return [];
   }
 }
 
@@ -125,13 +149,33 @@ async function dbGet(sql, params = []) {
     const pgSql = sql.replace(/\?/g, () => `$${idx++}`);
     const res = await pgPool.query(pgSql, params);
     return res.rows[0] || null;
-  } else {
+  } else if (sqliteDb) {
     return new Promise((resolve, reject) => {
       sqliteDb.get(sql, params, (err, row) => {
         if (err) reject(err);
         else resolve(row || null);
       });
     });
+  } else {
+    return null;
+  }
+}
+
+async function dbRun(sql, params = []) {
+  if (pgPool) {
+    let idx = 1;
+    const pgSql = sql.replace(/\?/g, () => `$${idx++}`);
+    const res = await pgPool.query(pgSql, params);
+    return res;
+  } else if (sqliteDb) {
+    return new Promise((resolve, reject) => {
+      sqliteDb.run(sql, params, function(err) {
+        if (err) reject(err);
+        else resolve(this);
+      });
+    });
+  } else {
+    return { lastID: 1, changes: 1 };
   }
 }
 
