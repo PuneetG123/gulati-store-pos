@@ -17,7 +17,7 @@ let state = {
 
 // Initialize Application
 document.addEventListener("DOMContentLoaded", async () => {
-  await initData();
+  await initData(true);
   setupSidebarToggle();
   setupNavigation();
   setupPOSCartActions();
@@ -118,7 +118,7 @@ async function syncFromServer() {
 // ----------------------------------------------------
 // DATA PERSISTENCE & INITIALIZATION
 // ----------------------------------------------------
-async function initData() {
+async function initData(isStartup = false) {
   try {
     let loadedState = null;
 
@@ -129,7 +129,9 @@ async function initData() {
       });
       
       if (response.status === 401) {
-        showLoginScreen();
+        if (isStartup) {
+          showLoginScreen();
+        }
       } else if (response.ok) {
         const serverData = await response.json();
         const hasServerContent = serverData && (
@@ -252,7 +254,6 @@ async function syncToServer(overrideState = null) {
     });
     
     if (response.status === 401) {
-      showLoginScreen();
       return;
     }
 
