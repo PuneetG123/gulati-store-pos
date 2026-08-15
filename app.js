@@ -115,9 +115,7 @@ async function initData() {
       headers: getAuthHeaders()
     });
     
-    if (response.status === 401) {
-      showLoginScreen();
-    } else if (response.ok) {
+    if (response.ok) {
       const serverData = await response.json();
       const hasServerContent = serverData && (
         (Array.isArray(serverData.products) && serverData.products.length > 0) ||
