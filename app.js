@@ -270,7 +270,6 @@ function saveCustomersToStorage() {
   } catch (e) {
     console.warn("localStorage save failed for customers:", e);
   }
-  syncToServer();
 }
 
 function saveLedgerToStorage() {
@@ -287,7 +286,6 @@ function saveLedgerToStorage() {
   } catch (e) {
     console.warn("localStorage save failed for fc_ledger due to quota limits:", e);
   }
-  syncToServer();
 }
 
 function saveProductsToStorage() {
@@ -296,7 +294,6 @@ function saveProductsToStorage() {
   } catch (e) {
     console.warn("localStorage save failed for products:", e);
   }
-  syncToServer();
 }
 
 function saveTransactionsToStorage() {
@@ -305,7 +302,6 @@ function saveTransactionsToStorage() {
   } catch (e) {
     console.warn("localStorage save failed for transactions:", e);
   }
-  syncToServer();
 }
 
 // ----------------------------------------------------
@@ -1203,6 +1199,45 @@ async function checkoutCart() {
     totalPayable: payableTotal,
     paymentMethod: payMethod
   };
+
+  // Optimistically push to local client state and save to localStorage
+  state.transactions.push(transaction);
+  saveTransactionsToStorage();
+
+  if (customerPhone && String(customerPhone).trim().length >= 10) {
+    const phoneStr = String(customerPhone).trim();
+    const nameStr = (customerName || "Customer " + phoneStr).trim();
+    let cust = state.customers.find(c => c.phone === phoneStr);
+    const addedBalance = (payMethod === 'Credit') ? payableTotal : 0;
+    
+    if (!cust) {
+      cust = {
+        phone: phoneStr,
+        name: nameStr,
+        totalPurchased: payableTotal,
+        balance: addedBalance,
+        lastTxn: new Date().toISOString().split('T')[0]
+      };
+      state.customers.push(cust);
+    } else {
+      cust.totalPurchased += payableTotal;
+      cust.balance += addedBalance;
+      cust.lastTxn = new Date().toISOString().split('T')[0];
+    }
+    saveCustomersToStorage();
+
+    if (payMethod === 'Credit') {
+      state.ledgerEntries.push({
+        id: `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`,
+        phone: phoneStr,
+        date: transaction.date,
+        type: 'debit',
+        amount: payableTotal,
+        ref: txnId
+      });
+      saveLedgerToStorage();
+    }
+  }
 
   // Build receipt html template and show modal immediately
   buildReceiptInvoice(transaction);
