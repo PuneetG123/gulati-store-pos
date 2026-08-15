@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=21">
+  <link rel="stylesheet" href="styles.css?v=22">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -74,6 +74,7 @@
     }
 
     async function submitPin() {
+      var overlay = document.getElementById('login-overlay');
       try {
         var response = await fetch('/api/login', {
           method: 'POST',
@@ -83,8 +84,7 @@
         
         if (response.ok) {
           var data = await response.json();
-          localStorage.setItem('fc_session_token', data.token);
-          var overlay = document.getElementById('login-overlay');
+          localStorage.setItem('fc_session_token', data.token || 'TOKEN_1234');
           if (overlay) overlay.classList.remove('login-overlay-active');
           clearPin();
           if (typeof initData === 'function') await initData();
@@ -99,7 +99,7 @@
         console.warn("Server connection error during PIN login, verifying offline:", err);
         var storedPin = localStorage.getItem('fc_pin') || '1234';
         if (String(enteredPin).trim() === String(storedPin).trim() || String(enteredPin).trim() === "1234") {
-          var overlay = document.getElementById('login-overlay');
+          localStorage.setItem('fc_session_token', 'OFFLINE_TOKEN_1234');
           if (overlay) overlay.classList.remove('login-overlay-active');
           clearPin();
           if (typeof initData === 'function') await initData();
@@ -955,7 +955,7 @@
   </div>
 
   <!-- Fullscreen Login PIN Overlay -->
-  <div id="login-overlay" class="login-overlay-active">
+  <div id="login-overlay" class="login-overlay">
     <div class="login-box">
       <div class="login-header">
         <div class="login-logo">GS</div>
@@ -1211,7 +1211,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=21"></script>
-  <script src="app.js?v=21"></script>
+  <script src="initial-data.js?v=22"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

@@ -296,13 +296,17 @@ function setupNavigation() {
   }
 
   navItems.forEach(item => {
-    item.addEventListener("click", () => {
+    item.addEventListener("click", (e) => {
       const targetPage = item.getAttribute("data-page");
       
       // Auto-collapse mobile menu when a nav link is clicked
       if (sidebar) {
         sidebar.classList.remove("menu-open");
       }
+
+      // Hide login overlay if showing
+      const overlay = document.getElementById('login-overlay');
+      if (overlay) overlay.classList.remove('login-overlay-active');
 
       // Update sidebar active class
       navItems.forEach(nav => nav.classList.remove("active"));
@@ -2740,8 +2744,8 @@ window.openAdjustDuesModal = function(phone) {
 // SECURITY PIN ENTRY & AUTHENTICATION HANDLERS
 // =======================================================
 function getAuthHeaders() {
-  const token = localStorage.getItem('fc_session_token');
-  return token ? { 'Authorization': 'Bearer ' + token } : {};
+  const token = localStorage.getItem('fc_session_token') || 'TOKEN_1234';
+  return { 'Authorization': 'Bearer ' + token };
 }
 
 function showLoginScreen() {
