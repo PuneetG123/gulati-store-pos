@@ -69,9 +69,49 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
+async function syncPendingTransactions() {
+  if (window.isSyncingPending) return;
+  
+  let pendingTxns = [];
+  try {
+    pendingTxns = JSON.parse(localStorage.getItem('fc_pending_txns') || '[]');
+  } catch (e) {
+    return;
+  }
+  if (!Array.isArray(pendingTxns) || pendingTxns.length === 0) return;
+
+  window.isSyncingPending = true;
+  console.log(`Syncing ${pendingTxns.length} pending offline transactions...`);
+
+  const failed = [];
+  for (const txn of pendingTxns) {
+    try {
+      const response = await fetch('/api/add-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(txn)
+      });
+      if (!response.ok) {
+        failed.push(txn);
+      }
+    } catch (err) {
+      failed.push(txn);
+    }
+  }
+
+  try {
+    localStorage.setItem('fc_pending_txns', JSON.stringify(failed));
+  } catch (e) {}
+  
+  window.isSyncingPending = false;
+}
+
 // Non-destructive background polling sync
 async function syncFromServer() {
   try {
+    // Sync any pending transactions first
+    await syncPendingTransactions();
+
     const response = await fetch('/api/data', {
       headers: getAuthHeaders()
     });
@@ -120,6 +160,9 @@ async function syncFromServer() {
 // ----------------------------------------------------
 async function initData(isStartup = false) {
   try {
+    // Flush any pending transactions from previous sessions
+    await syncPendingTransactions();
+
     let loadedState = null;
     let shouldSeedServer = false;
 
@@ -1267,17 +1310,21 @@ async function checkoutCart() {
   // Re-render local POS/Dashboard state instantly
   renderAll();
 
+  // Add to pending transactions queue in localStorage for fault tolerance / page refresh survival
+  try {
+    const pending = JSON.parse(localStorage.getItem('fc_pending_txns') || '[]');
+    pending.push(transaction);
+    localStorage.setItem('fc_pending_txns', JSON.stringify(pending));
+  } catch (e) {}
+
   // Run database sync in the background (non-blocking)
   (async () => {
     try {
       // Save local inventory changes to storage
       saveProductsToStorage();
 
-      await fetch('/api/add-transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify(transaction)
-      });
+      // Upload pending transactions queue
+      await syncPendingTransactions();
       
       // Refresh server state across devices silently
       await initData();
