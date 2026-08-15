@@ -1799,3 +1799,15 @@ tr:hover td {
 .shake-box {
   animation: shake 0.4s ease;
 }
+
+/* POS Active View overrides for landscape viewport stretching */
+@media (min-width: 901px) {
+  #main-content.pos-active {
+    padding-bottom: 24px;
+    overflow: hidden;
+  }
+
+  #main-content.pos-active .pos-layout {
+    height: 100%;
+  }
+}
