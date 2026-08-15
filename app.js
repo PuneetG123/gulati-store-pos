@@ -33,15 +33,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Real-Time Multi-Device Sync: Re-fetch latest server data whenever window gains focus
   window.addEventListener("focus", async () => {
-    await initData();
-    renderAll();
+    await syncFromServer();
   });
 
-  // Background polling every 5 seconds to keep Tablet and Laptop 100% in sync
+  // Non-destructive background polling every 5 seconds
   setInterval(async () => {
     if (document.visibilityState === "visible") {
-      await initData();
-      renderAll();
+      await syncFromServer();
     }
   }, 5000);
 
@@ -71,6 +69,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
+// Non-destructive background polling sync
+async function syncFromServer() {
+  try {
+    const response = await fetch('/api/data', {
+      headers: getAuthHeaders()
+    });
+    if (response.ok) {
+      const serverData = await response.json();
+      if (serverData && Array.isArray(serverData.products) && (serverData.products.length > 0 || serverData.customers.length > 0)) {
+        state.products = serverData.products;
+        state.transactions = serverData.transactions || [];
+        state.customers = serverData.customers || [];
+        state.ledgerEntries = serverData.ledgerEntries || [];
+        
+        try {
+          localStorage.setItem("fc_products", JSON.stringify(state.products));
+          localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+          localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+        } catch(e) {}
+
+        renderAll();
+      }
+    }
+  } catch(err) {
+    console.warn("Background sync skipped due to network glitch:", err);
+  }
+}
+
 // ----------------------------------------------------
 // DATA PERSISTENCE & INITIALIZATION
 // ----------------------------------------------------
@@ -85,10 +111,9 @@ async function initData() {
     
     if (response.status === 401) {
       showLoginScreen();
-      // Continue to initialize local cached data so navigation tabs work
     } else if (response.ok) {
       const serverData = await response.json();
-      if (serverData && ((serverData.products && serverData.products.length > 0) || (serverData.customers && serverData.customers.length > 0))) {
+      if (serverData && Array.isArray(serverData.products)) {
         loadedState = serverData;
         console.log("Loaded data from server database successfully.");
       }
@@ -97,7 +122,7 @@ async function initData() {
     console.warn("Could not connect to database server, checking local storage:", err);
   }
 
-  // 2. If server database is empty or unreachable, try local storage
+  // 2. If server database is unreachable, check local storage
   if (!loadedState) {
     const localProducts = localStorage.getItem("fc_products");
     if (localProducts) {
@@ -111,7 +136,6 @@ async function initData() {
             ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
           };
           console.log("Loaded data from localStorage.");
-          syncToServer(loadedState);
         }
       } catch (e) {
         console.error("Error parsing localStorage data:", e);
