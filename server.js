@@ -567,6 +567,53 @@ app.post('/api/save', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/add-customer', authenticateToken, async (req, res) => {
+  const { name, phone, balance } = req.body;
+  if (!name || !phone || !/^\d{10}$/.test(phone)) {
+    return res.status(400).json({ error: "Customer name and valid 10-digit phone number are required" });
+  }
+
+  try {
+    const phoneStr = String(phone).trim();
+    const nameStr = String(name).trim();
+    const initialBalance = parseFloat(balance) || 0;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check if customer already exists
+    const existing = await dbGet("SELECT * FROM customers WHERE phone = ?", [phoneStr]);
+    if (existing) {
+      return res.status(400).json({ error: `Customer with phone number ${phoneStr} already exists.` });
+    }
+
+    // Insert customer
+    await dbRun(
+      "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+      [phoneStr, nameStr, initialBalance > 0 ? initialBalance : 0, initialBalance, initialBalance !== 0 ? today : '']
+    );
+
+    // If opening balance dues !== 0, log an opening balance entry
+    if (initialBalance !== 0) {
+      const ledgerId = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
+      try {
+        await dbRun(
+          "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, ?, ?, ?)",
+          [ledgerId, phoneStr, new Date().toISOString(), initialBalance > 0 ? 'debit' : 'credit', Math.abs(initialBalance), "Opening Balance"]
+        );
+      } catch (e) {
+        // Fallback for older ledger schema
+        await dbRun(
+          "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
+          [new Date().toISOString(), phoneStr, initialBalance > 0 ? 'debit' : 'credit', Math.abs(initialBalance), "Opening Balance"]
+        );
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    handleDatabaseError(err, res, "Failed to add customer");
+  }
+});
+
 // Atomic Multi-Device Sync Routes
 app.post('/api/adjust-dues', authenticateToken, async (req, res) => {
   const { phone, addedDues, reason, attachmentData, attachmentName } = req.body;

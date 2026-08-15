@@ -2701,6 +2701,7 @@ function setupCustomerLedgerActions() {
       // If opening dues !== 0, log an opening balance entry
       if (dues !== 0) {
         state.ledgerEntries.push({
+          id: `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`,
           date: new Date().toISOString(),
           phone: phone,
           type: dues > 0 ? "debit" : "credit",
@@ -2713,6 +2714,22 @@ function setupCustomerLedgerActions() {
       addModal.classList.remove("active");
       renderLedger();
       updatePOSCustomerDatalists(); // keep POS dropdowns updated
+
+      // Sync customer to server atomically in the background
+      (async () => {
+        try {
+          await fetch('/api/add-customer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ name, phone, balance: dues })
+          });
+          // Refresh server state across devices silently
+          await initData();
+          renderAll();
+        } catch (err) {
+          console.error("Background customer add error:", err);
+        }
+      })();
     });
   }
 
