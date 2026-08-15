@@ -394,16 +394,6 @@ function setupNavigation() {
       });
 
       state.activePage = targetPage;
-      
-      const mainContent = document.getElementById("main-content");
-      if (mainContent) {
-        if (targetPage === 'pos') {
-          mainContent.classList.add("pos-active");
-        } else {
-          mainContent.classList.remove("pos-active");
-        }
-      }
-
       renderAll();
 
       // Auto focus scanner input when switching to POS
