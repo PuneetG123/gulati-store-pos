@@ -466,13 +466,32 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: "Missing required database fields in payload" });
   }
 
+  let client = null;
   try {
+    // Start Transaction
+    if (pgPool) {
+      client = await pgPool.connect();
+      await client.query('BEGIN');
+    } else if (sqliteDb) {
+      await dbRun("BEGIN TRANSACTION");
+    }
+
+    const runQuery = async (sql, params = []) => {
+      if (client) {
+        let idx = 1;
+        const pgSql = sql.replace(/\?/g, () => `$${idx++}`);
+        return await client.query(pgSql, params);
+      } else {
+        return await dbRun(sql, params);
+      }
+    };
+
     // 1. Sync Products (Safe Upsert / Replace)
     if (Array.isArray(products) && products.length > 0) {
-      await dbRun("DELETE FROM products");
+      await runQuery("DELETE FROM products");
       for (const p of products) {
         const sku = String(p.sku || p.id);
-        await dbRun(
+        await runQuery(
           "INSERT INTO products (sku, name, category, hsn, \"costPrice\", \"sellingPrice\", \"gstSlab\", \"discountPercent\", stock, \"reorderLevel\", unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           [sku, p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
         );
@@ -481,9 +500,9 @@ app.post('/api/save', authenticateToken, async (req, res) => {
 
     // 2. Sync Transactions
     if (Array.isArray(transactions) && transactions.length > 0) {
-      await dbRun("DELETE FROM transactions");
+      await runQuery("DELETE FROM transactions");
       for (const t of transactions) {
-        await dbRun(
+        await runQuery(
           "INSERT INTO transactions (id, date, \"customerName\", \"customerPhone\", subtotal, \"discountType\", \"discountValue\", \"discountAmount\", \"gstAmount\", \"totalPayable\", \"paymentMethod\", items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           [t.id, t.date, t.customerName, t.customerPhone, t.subtotal, t.discountType || 'flat', t.discountValue || 0, t.discountAmount || 0, t.gstAmount || 0, t.totalPayable || 0, t.paymentMethod || 'Cash', JSON.stringify(t.items)]
         );
@@ -492,9 +511,9 @@ app.post('/api/save', authenticateToken, async (req, res) => {
 
     // 3. Sync Customers
     if (Array.isArray(customers) && customers.length > 0) {
-      await dbRun("DELETE FROM customers");
+      await runQuery("DELETE FROM customers");
       for (const c of customers) {
-        await dbRun(
+        await runQuery(
           "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
           [c.phone, c.name, c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
         );
@@ -504,17 +523,17 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     // 4. Sync Ledger
     if (Array.isArray(ledgerEntries) && ledgerEntries.length > 0) {
       try {
-        await dbRun("DELETE FROM customer_ledger");
+        await runQuery("DELETE FROM customer_ledger");
         for (const l of ledgerEntries) {
-          await dbRun(
+          await runQuery(
             "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone, l.date, l.type, l.amount, l.ref, l.attachmentData || null, l.attachmentName || null]
           );
         }
       } catch (e) {
-        await dbRun("DELETE FROM ledgerEntries");
+        await runQuery("DELETE FROM ledgerEntries");
         for (const l of ledgerEntries) {
-          await dbRun(
+          await runQuery(
             "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
             [l.date, l.phone, l.type, l.amount, l.ref]
           );
@@ -522,9 +541,29 @@ app.post('/api/save', authenticateToken, async (req, res) => {
       }
     }
 
+    // Commit Transaction
+    if (client) {
+      await client.query('COMMIT');
+    } else {
+      await dbRun("COMMIT TRANSACTION");
+    }
+
     res.json({ success: true });
   } catch (err) {
+    // Rollback Transaction on failure
+    try {
+      if (client) {
+        await client.query('ROLLBACK');
+      } else {
+        await dbRun("ROLLBACK TRANSACTION");
+      }
+    } catch (e) {}
+
     handleDatabaseError(err, res, "Failed to save database state");
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 });
 

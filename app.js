@@ -95,7 +95,19 @@ async function syncFromServer() {
           localStorage.setItem("fc_customers", JSON.stringify(state.customers));
         } catch(e) {}
 
-        renderAll();
+        // Prevent background updates from resetting cursor focus or cart contents during active billing
+        const isUserBilling = state.cart.length > 0 || (
+          document.activeElement && [
+            'pos-customer-name',
+            'pos-customer-phone',
+            'pos-scanner-sim-input',
+            'pos-search-input'
+          ].includes(document.activeElement.id)
+        );
+
+        if (!isUserBilling) {
+          renderAll();
+        }
       }
     }
   } catch(err) {
