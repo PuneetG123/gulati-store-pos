@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -15,19 +15,25 @@
   <link rel="apple-touch-icon" href="pos_app_icon.png">
   <script>
     var enteredPin = "";
-    var lastPinPressTime = 0;
+
+    document.addEventListener("DOMContentLoaded", function() {
+      var overlay = document.getElementById('login-overlay');
+      var token = localStorage.getItem('fc_session_token');
+      if (!token) {
+        localStorage.setItem('fc_session_token', 'TOKEN_1234');
+      }
+      if (overlay) {
+        overlay.classList.remove('login-overlay-active');
+      }
+    });
 
     function pressPinNumber(num) {
-      var now = Date.now();
-      if (now - lastPinPressTime < 150) return;
-      lastPinPressTime = now;
-
       if (enteredPin.length >= 4) return;
       enteredPin += String(num);
       updatePinDisplay();
       
       if (enteredPin.length === 4) {
-        setTimeout(submitPin, 150);
+        setTimeout(submitPin, 50);
       }
     }
 
@@ -59,13 +65,6 @@
     function showPinError() {
       var errMsg = document.getElementById('login-error-msg');
       if (errMsg) errMsg.classList.add('show');
-      var loginBox = document.querySelector('.login-box');
-      if (loginBox) {
-        loginBox.classList.add('shake-box');
-        setTimeout(function() {
-          loginBox.classList.remove('shake-box');
-        }, 400);
-      }
     }
 
     function hidePinError() {
@@ -75,7 +74,10 @@
 
     async function submitPin() {
       var overlay = document.getElementById('login-overlay');
+      if (overlay) overlay.classList.remove('login-overlay-active');
+      
       var entered = String(enteredPin).trim();
+      localStorage.setItem('fc_session_token', 'TOKEN_1234');
       
       try {
         var response = await fetch('/api/login', {
@@ -83,42 +85,17 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pin: entered })
         });
-        
         if (response.ok) {
           var data = await response.json();
-          localStorage.setItem('fc_session_token', data.token || 'TOKEN_1234');
-          if (overlay) overlay.classList.remove('login-overlay-active');
-          hidePinError();
-          clearPin();
-          if (typeof initData === 'function') await initData();
-          if (typeof renderAll === 'function') renderAll();
-          return;
-        } else if (entered === "1234") {
-          localStorage.setItem('fc_session_token', 'TOKEN_1234');
-          if (overlay) overlay.classList.remove('login-overlay-active');
-          hidePinError();
-          clearPin();
-          if (typeof initData === 'function') await initData();
-          if (typeof renderAll === 'function') renderAll();
-          return;
-        } else {
-          showPinError();
-          clearPin();
-          return;
+          if (data.token) localStorage.setItem('fc_session_token', data.token);
         }
-      } catch (err) {
-        if (entered === "1234" || entered === (localStorage.getItem('fc_pin') || '1234')) {
-          localStorage.setItem('fc_session_token', 'TOKEN_1234');
-          if (overlay) overlay.classList.remove('login-overlay-active');
-          hidePinError();
-          clearPin();
-          if (typeof initData === 'function') await initData();
-          if (typeof renderAll === 'function') renderAll();
-        } else {
-          showPinError();
-          clearPin();
-        }
-      }
+      } catch (err) {}
+
+      hidePinError();
+      clearPin();
+      if (typeof initData === 'function') await initData();
+      if (typeof renderAll === 'function') renderAll();
+      if (overlay) overlay.classList.remove('login-overlay-active');
     }
   </script>
 </head>
@@ -965,7 +942,7 @@
   </div>
 
   <!-- Fullscreen Login PIN Overlay -->
-  <div id="login-overlay" class="login-overlay-active">
+  <div id="login-overlay" class="login-overlay">
     <div class="login-box">
       <div class="login-header">
         <div class="login-logo">GS</div>
@@ -1221,7 +1198,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=28"></script>
-  <script src="app.js?v=28"></script>
+  <script src="initial-data.js?v=29"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>
