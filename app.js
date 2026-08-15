@@ -121,6 +121,7 @@ async function syncFromServer() {
 async function initData(isStartup = false) {
   try {
     let loadedState = null;
+    let shouldSeedServer = false;
 
     // 1. Try to load from SQLite server with auth token
     try {
@@ -143,6 +144,9 @@ async function initData(isStartup = false) {
         if (hasServerContent) {
           loadedState = serverData;
           console.log("Loaded non-empty data from server database successfully.");
+        } else {
+          // Explicitly verified empty server database
+          shouldSeedServer = true;
         }
       }
     } catch (err) {
@@ -163,7 +167,9 @@ async function initData(isStartup = false) {
               ledgerEntries: JSON.parse(localStorage.getItem("fc_ledger") || "[]")
             };
             console.log("Loaded non-empty data from localStorage.");
-            syncToServer(loadedState);
+            if (shouldSeedServer) {
+              syncToServer(loadedState);
+            }
           }
         } catch (e) {
           console.error("Error parsing localStorage data:", e);
@@ -189,7 +195,9 @@ async function initData(isStartup = false) {
         ]
       };
       console.log("Loaded default seeded grocery catalog.");
-      syncToServer(loadedState);
+      if (shouldSeedServer) {
+        syncToServer(loadedState);
+      }
     }
 
     // Bind to application state
