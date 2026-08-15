@@ -1635,7 +1635,9 @@ tr:hover td {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   z-index: 99999;
-  display: none;
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden;
   align-items: center;
   justify-content: center;
   color: var(--text-primary);
@@ -1644,7 +1646,9 @@ tr:hover td {
 }
 
 #login-overlay.login-overlay-active {
-  display: flex;
+  display: flex !important;
+  pointer-events: auto !important;
+  visibility: visible;
   opacity: 1;
 }
 

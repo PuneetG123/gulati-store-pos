@@ -211,6 +211,9 @@ async function initData() {
   if (!state.settings.printer_name) state.settings.printer_name = localStorage.getItem('fc_printer_name') || 'Default';
   if (!state.settings.auto_print) state.settings.auto_print = localStorage.getItem('fc_auto_print') || 'false';
   if (!state.settings.gstin) state.settings.gstin = localStorage.getItem('fc_gstin') || '07AAAAA1111A1Z1';
+
+  // Render UI with initialized data
+  renderAll();
 }
 
 async function syncToServer(overrideState = null) {
