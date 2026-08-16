@@ -424,13 +424,12 @@ function renderAll() {
   }
 }
 
-// Helper: Format Currency (Rupee Format)
 function formatRupee(amount) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
+  const formatter = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(amount);
+  });
+  return "₹" + formatter.format(amount);
 }
 
 // Helper: Format Date
@@ -1858,6 +1857,8 @@ function getLocalDateString(dateInput) {
 }
 
 function setupTransactionsLedger() {
+  txnDateFilter = getLocalDateString(new Date());
+
   const searchInput = document.getElementById("txn-search-input");
   if (searchInput) {
     searchInput.addEventListener("input", (e) => {
@@ -1868,6 +1869,7 @@ function setupTransactionsLedger() {
 
   const dateInput = document.getElementById("txn-filter-date");
   if (dateInput) {
+    dateInput.value = txnDateFilter;
     dateInput.addEventListener("change", (e) => {
       txnDateFilter = e.target.value;
       renderTransactions();
