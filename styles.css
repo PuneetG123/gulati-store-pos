@@ -1439,85 +1439,36 @@ tr:hover td {
 ---------------------------------------------------- */
 @media (max-width: 850px) {
   #main-content {
-    padding: 10px 10px 40px 10px !important;
-    overflow: hidden !important;
+    padding: 20px 20px 100px 20px !important;
+    overflow-y: auto !important;
   }
 
   .pos-layout {
-    display: flex !important;
-    flex-direction: column !important;
-    height: calc(100vh - 100px) !important;
-    gap: 8px !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    gap: 24px !important;
+    overflow: visible !important;
   }
 
   .pos-catalog-panel {
-    height: 70% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 8px !important;
-  }
-
-  .pos-catalog-panel .catalog-scroll {
-    flex: 1 !important;
-    overflow-y: auto !important;
+    height: auto !important;
   }
 
   .pos-cart-panel {
-    height: 30% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    margin-bottom: 0 !important;
-    padding: 10px !important;
-    gap: 6px !important;
-    overflow: hidden !important;
-  }
-
-  .pos-cart-panel .cart-header {
-    padding-bottom: 4px !important;
-    margin-bottom: 0 !important;
-  }
-  
-  .pos-cart-panel .cart-onboarding {
-    margin-top: 4px !important;
-    margin-bottom: 4px !important;
-    gap: 4px !important;
-  }
-
-  .pos-cart-panel .cart-onboarding input {
-    height: 28px !important;
-    font-size: 11px !important;
-  }
-
-  .pos-cart-panel .cart-items-wrapper {
-    flex: 1 1 0px !important;
     height: auto !important;
-    min-height: 40px !important;
-    overflow-y: auto !important;
-    margin: 4px 0 !important;
-    gap: 6px !important;
+    margin-bottom: 80px !important;
   }
 
-  .pos-cart-panel .cart-item {
-    padding: 6px 8px !important;
-    gap: 6px !important;
-  }
-
-  .pos-cart-panel .pos-cart-summary {
-    padding: 6px 8px !important;
-    gap: 4px !important;
-  }
-
-  .pos-cart-panel .pos-cart-controls {
-    margin-top: 4px !important;
+  .pos-cart-controls {
     grid-template-columns: 1fr !important;
-    gap: 6px !important;
+    gap: 8px;
   }
 
-  .pos-cart-panel .pos-cart-controls select,
-  .pos-cart-panel .pos-cart-controls button {
-    height: 30px !important;
-    font-size: 11px !important;
-    padding: 2px 6px !important;
+  .cart-items-wrapper {
+    flex: none !important;
+    height: auto !important;
+    overflow-y: visible !important;
   }
 }
 
