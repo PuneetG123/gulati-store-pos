@@ -1444,15 +1444,23 @@ tr:hover td {
   }
 
   .pos-layout {
-    display: grid !important;
-    grid-template-columns: 1fr !important;
+    display: flex !important;
+    flex-direction: column !important;
     height: auto !important;
     gap: 24px !important;
     overflow: visible !important;
   }
 
   .pos-catalog-panel {
-    height: auto !important;
+    height: 70vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .pos-catalog-panel .catalog-scroll {
+    flex: 1 !important;
+    overflow-y: auto !important;
   }
 
   .pos-cart-panel {
