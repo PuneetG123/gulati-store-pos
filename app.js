@@ -3168,12 +3168,8 @@ function setupStoreSettings() {
 }
 
 function sendBluetoothPrint(textReceipt) {
-  // Construct a correct Android Web Intent for com.iyaltamizh.bluetoothprint
-  const encodedText = encodeURIComponent(textReceipt);
-  const printIntent = `intent://#Intent;package=com.iyaltamizh.bluetoothprint;component=com.iyaltamizh.bluetoothprint/com.iyaltamizh.bluetoothprint.Print;S.content=${encodedText};end;`;
-  
-  // Trigger intent on Android device
-  window.location.href = printIntent;
+  // Trigger native browser printing to utilize the configured system print service
+  window.print();
 }
 
 async function sendReceiptToPrinter(receiptText) {
