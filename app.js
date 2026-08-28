@@ -3168,8 +3168,12 @@ function setupStoreSettings() {
 }
 
 function sendBluetoothPrint(textReceipt) {
-  // Trigger native browser printing to utilize the configured system print service
-  window.print();
+  // Construct RawBT Android Web Intent for Direct Bluetooth Printing
+  const encodedText = encodeURIComponent(textReceipt);
+  const rawbtIntent = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a42.rawbtprinter;end;`;
+  
+  // Trigger intent on Android device
+  window.location.href = rawbtIntent;
 }
 
 async function sendReceiptToPrinter(receiptText) {
