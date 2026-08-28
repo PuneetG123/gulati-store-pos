@@ -3168,12 +3168,12 @@ function setupStoreSettings() {
 }
 
 function sendBluetoothPrint(textReceipt) {
-  // Construct Android Web Intent for Prasad Shirwandkar's Bluetooth Print app
+  // Use the official custom scheme for Bluetooth Printer+
   const encodedText = encodeURIComponent(textReceipt);
-  const btPrintIntent = `intent:#Intent;component=com.iyaltamizh.bluetoothprint/com.iyaltamizh.bluetoothprint.Print;S.content=${encodedText};end;`;
+  const printUrl = `btprinterplus://print?content=${encodedText}`;
   
-  // Trigger intent on Android device
-  window.location.href = btPrintIntent;
+  // Trigger direct print in app
+  window.location.href = printUrl;
 }
 
 async function sendReceiptToPrinter(receiptText) {
