@@ -3170,7 +3170,7 @@ function setupStoreSettings() {
 function sendBluetoothPrint(textReceipt) {
   // Construct RawBT Android Web Intent for Direct Bluetooth Printing
   const encodedText = encodeURIComponent(textReceipt);
-  const rawbtIntent = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a42.rawbtprinter;end;`;
+  const rawbtIntent = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
   
   // Trigger intent on Android device
   window.location.href = rawbtIntent;
