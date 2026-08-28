@@ -3168,12 +3168,12 @@ function setupStoreSettings() {
 }
 
 function sendBluetoothPrint(textReceipt) {
-  // Construct RawBT Android Web Intent for Direct Bluetooth Printing
+  // Construct Android Web Intent for Prasad Shirwandkar's Bluetooth Print app
   const encodedText = encodeURIComponent(textReceipt);
-  const rawbtIntent = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a42.rawbtprinter;end;`;
+  const btPrintIntent = `intent:#Intent;component=com.iyaltamizh.bluetoothprint/com.iyaltamizh.bluetoothprint.Print;S.content=${encodedText};end;`;
   
   // Trigger intent on Android device
-  window.location.href = rawbtIntent;
+  window.location.href = btPrintIntent;
 }
 
 async function sendReceiptToPrinter(receiptText) {
