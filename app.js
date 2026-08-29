@@ -4388,7 +4388,12 @@ async function processVoiceBillingCommand(rawText) {
       renderAll();
       showVoiceToast(`Saved & Added ${name} (₹${price})`);
     } else {
-      showVoiceToast("Error saving product to server database", true);
+      let errMsg = "Error saving product to server database";
+      try {
+        const data = await response.json();
+        if (data && data.error) errMsg = data.error;
+      } catch (e) {}
+      showVoiceToast(errMsg, true);
     }
   } catch (err) {
     console.error("Voice Quick Add failed:", err);
