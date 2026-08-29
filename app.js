@@ -3168,12 +3168,12 @@ function setupStoreSettings() {
 }
 
 function sendBluetoothPrint(textReceipt) {
-  // Use the official custom scheme for Bluetooth USB Printer Plus
+  // Construct RawBT Android Web Intent for Direct Bluetooth Printing
   const encodedText = encodeURIComponent(textReceipt);
-  const printUrl = `btprinterplus://print?content=${encodedText}`;
+  const rawbtIntent = `intent:${encodedText}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
   
-  // Trigger direct print in app
-  window.location.href = printUrl;
+  // Trigger intent on Android device
+  window.location.href = rawbtIntent;
 }
 
 async function sendReceiptToPrinter(receiptText) {
