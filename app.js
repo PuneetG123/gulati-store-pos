@@ -160,8 +160,12 @@ async function syncFromServer() {
 // ----------------------------------------------------
 async function initData(isStartup = false) {
   try {
-    // Flush any pending transactions from previous sessions
-    await syncPendingTransactions();
+    // Flush any pending transactions from previous sessions safely
+    try {
+      await syncPendingTransactions();
+    } catch (e) {
+      console.warn("Failed to sync pending transactions during initialization:", e);
+    }
 
     let loadedState = null;
     let shouldSeedServer = false;
@@ -1000,7 +1004,10 @@ function renderPOSCart() {
     div.className = "cart-item";
     div.innerHTML = `
       <div class="cart-item-details">
-        <h4>${item.product.name}</h4>
+        <h4 style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <span>${item.product.name}</span>
+          <button class="cart-item-remove-x" onclick="deleteCartItem('${item.product.sku || item.product.id}')" title="Remove Item" style="border: none; background: transparent; color: var(--danger); font-size: 16px; font-weight: bold; cursor: pointer; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">✕</button>
+        </h4>
         <p>${priceDetails}</p>
       </div>
       <div class="cart-item-qty">
@@ -1789,6 +1796,15 @@ async function saveProductForm() {
 
   if (!sku) {
     sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
+  }
+
+  // Duplicate Check: Case-insensitive name match (only for new additions)
+  if (!editSku) {
+    const exists = state.products.some(p => p.name.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      alert(`Validation Error: A product named "${name}" already exists in the inventory!`);
+      return;
+    }
   }
 
   const prodObj = {
@@ -2951,10 +2967,16 @@ window.openChangePinModal = function() {
   document.getElementById("pin-new").value = "";
   document.getElementById("pin-confirm").value = "";
 
+  // Double-safety: Ensure settings are bound from localStorage if state.settings properties are missing
+  if (!state.settings) state.settings = {};
+  if (!state.settings.printer_name) state.settings.printer_name = localStorage.getItem('fc_printer_name') || 'Default';
+  if (!state.settings.auto_print) state.settings.auto_print = localStorage.getItem('fc_auto_print') || 'false';
+  if (!state.settings.gstin) state.settings.gstin = localStorage.getItem('fc_gstin') || '07AAAAA1111A1Z1';
+
   // Populate printer inputs and reset statuses
-  document.getElementById("settings-printer-name").value = state.settings.printer_name || "Default";
+  document.getElementById("settings-printer-name").value = state.settings.printer_name;
   document.getElementById("settings-auto-print").checked = state.settings.auto_print === "true";
-  document.getElementById("settings-gstin").value = state.settings.gstin || "07AAAAA1111A1Z1";
+  document.getElementById("settings-gstin").value = state.settings.gstin;
   
   const statusDiv = document.getElementById("printer-settings-status");
   if (statusDiv) statusDiv.style.display = "none";
