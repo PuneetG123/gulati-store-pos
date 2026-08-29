@@ -277,6 +277,9 @@ async function initData(isStartup = false) {
     if (loadedState.settings && Array.isArray(loadedState.settings)) {
       loadedState.settings.forEach(s => {
         state.settings[s.key] = s.value;
+        if (s.key === 'pin') {
+          localStorage.setItem('fc_pin', s.value);
+        }
       });
     }
     // Ensure default fallbacks are defined
@@ -3087,6 +3090,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (response.ok) {
           successDiv.style.display = "block";
+          
+          // Cache the new PIN locally for offline access
+          localStorage.setItem('fc_pin', newPin);
           
           // Clear inputs
           document.getElementById("pin-current").value = "";

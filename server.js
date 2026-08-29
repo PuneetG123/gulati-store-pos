@@ -353,7 +353,7 @@ app.post('/api/login', async (req, res) => {
     const currentPin = row ? row.value : "1234";
     const reqPin = String(pin).trim();
 
-    if (reqPin === String(currentPin).trim() || reqPin === "1234") {
+    if (reqPin === String(currentPin).trim()) {
       const token = generatePinToken(reqPin);
       activeTokens.add(token);
       res.json({ success: true, token });
