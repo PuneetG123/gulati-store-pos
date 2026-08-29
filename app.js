@@ -182,19 +182,8 @@ async function initData(isStartup = false) {
         }
       } else if (response.ok) {
         const serverData = await response.json();
-        const hasServerContent = serverData && (
-          (Array.isArray(serverData.products) && serverData.products.length > 0) ||
-          (Array.isArray(serverData.customers) && serverData.customers.length > 0) ||
-          (Array.isArray(serverData.transactions) && serverData.transactions.length > 0)
-        );
-
-        if (hasServerContent) {
-          loadedState = serverData;
-          console.log("Loaded non-empty data from server database successfully.");
-        } else {
-          // Explicitly verified empty server database
-          shouldSeedServer = true;
-        }
+        loadedState = serverData;
+        console.log("Loaded data from server database successfully.");
       }
     } catch (err) {
       console.warn("Could not connect to database server, checking local storage:", err);
