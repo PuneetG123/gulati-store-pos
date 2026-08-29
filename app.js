@@ -2950,22 +2950,20 @@ window.openChangePinModal = function() {
   document.getElementById("pin-current").value = "";
   document.getElementById("pin-new").value = "";
   document.getElementById("pin-confirm").value = "";
-  document.getElementById("pin-otp").value = "";
 
   // Populate printer inputs and reset statuses
   document.getElementById("settings-printer-name").value = state.settings.printer_name || "Default";
   document.getElementById("settings-auto-print").checked = state.settings.auto_print === "true";
   document.getElementById("settings-gstin").value = state.settings.gstin || "07AAAAA1111A1Z1";
-  document.getElementById("printer-settings-status").style.display = "none";
   
-  // Hide OTP container and Reset buttons to Step 1
-  document.getElementById("pin-otp-container").style.display = "none";
-  document.getElementById("pin-otp").required = false;
-  document.getElementById("change-pin-request-btn").style.display = "block";
-  document.getElementById("change-pin-submit-btn").style.display = "none";
+  const statusDiv = document.getElementById("printer-settings-status");
+  if (statusDiv) statusDiv.style.display = "none";
   
-  document.getElementById("change-pin-error").style.display = "none";
-  document.getElementById("change-pin-success").style.display = "none";
+  const errorDiv = document.getElementById("change-pin-error");
+  if (errorDiv) errorDiv.style.display = "none";
+  
+  const successDiv = document.getElementById("change-pin-success");
+  if (successDiv) successDiv.style.display = "none";
   
   modal.classList.add("active");
 };
