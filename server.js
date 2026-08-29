@@ -367,7 +367,7 @@ app.post('/api/login', async (req, res) => {
 
 let pendingPinChange = null;
 
-app.post('/api/request-otp', authenticateToken, async (req, res) => {
+app.post('/api/change-pin', authenticateToken, async (req, res) => {
   const { oldPin, newPin } = req.body;
   if (!oldPin || !newPin) return res.status(400).json({ error: "Current PIN and New PIN are required" });
   if (!/^\d{4}$/.test(newPin)) return res.status(400).json({ error: "New PIN must be exactly 4 digits" });
@@ -378,37 +378,11 @@ app.post('/api/request-otp', authenticateToken, async (req, res) => {
 
     if (oldPin !== currentPin) return res.status(400).json({ error: "Current PIN is incorrect" });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    pendingPinChange = { newPin, otp, expiresAt: Date.now() + 300000 };
-
-    console.log(`\n=======================================================`);
-    console.log(` ⚠️  SECURITY ALERT: PIN CHANGE REQUESTED!`);
-    console.log(` >>> VERIFICATION OTP CODE: ${otp} <<<`);
-    console.log(`=======================================================\n`);
-
+    await dbRun("UPDATE settings SET value = ? WHERE key = 'pin'", [newPin]);
+    console.log(`[SECURITY] PIN changed successfully to ${newPin}`);
     res.json({ success: true });
   } catch (err) {
-    handleDatabaseError(err, res, "Failed to request OTP");
-  }
-});
-
-app.post('/api/verify-otp', authenticateToken, async (req, res) => {
-  const { otp } = req.body;
-  if (!otp) return res.status(400).json({ error: "OTP is required" });
-  if (!pendingPinChange) return res.status(400).json({ error: "No pending PIN change request found." });
-  if (Date.now() > pendingPinChange.expiresAt) {
-    pendingPinChange = null;
-    return res.status(400).json({ error: "OTP has expired. Please request a new one." });
-  }
-  if (otp !== pendingPinChange.otp) return res.status(400).json({ error: "Incorrect OTP." });
-
-  try {
-    await dbRun("UPDATE settings SET value = ? WHERE key = 'pin'", [pendingPinChange.newPin]);
-    console.log(`[SECURITY] PIN changed successfully to ${pendingPinChange.newPin}`);
-    pendingPinChange = null;
-    res.json({ success: true });
-  } catch (err) {
-    handleDatabaseError(err, res, "Failed to save new PIN to database");
+    handleDatabaseError(err, res, "Failed to update PIN");
   }
 });
 

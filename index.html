@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=62">
+  <link rel="stylesheet" href="styles.css?v=63">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -942,20 +942,12 @@
           <input type="password" id="pin-confirm" class="form-control" required maxlength="4" pattern="\d{4}" placeholder="••••" style="text-align:center; font-size: 18px; letter-spacing: 6px;">
         </div>
 
-        <!-- OTP verification step (hidden initially) -->
-        <div class="form-group" id="pin-otp-container" style="display: none; border-top: 1px dashed var(--border-color); padding-top: 16px; margin-top: 16px;">
-          <label for="pin-otp" style="color: var(--warning); font-weight: 700;">Enter OTP from Laptop Console Screen</label>
-          <input type="text" id="pin-otp" class="form-control" maxlength="6" pattern="\d{6}" placeholder="000000" style="text-align:center; font-size: 22px; letter-spacing: 12px; font-weight: 800; border-color: var(--warning);">
-          <small style="display: block; text-align: center; color: var(--text-muted); margin-top: 6px;">A verification OTP has been printed on the laptop server screen.</small>
-        </div>
-        
         <div id="change-pin-error" class="text-danger" style="margin-bottom: 12px; font-size: 13px; text-align: center; display: none; color: var(--danger);"></div>
         <div id="change-pin-success" class="text-success" style="margin-bottom: 12px; font-size: 13px; text-align: center; display: none; color: var(--success);">PIN changed successfully!</div>
 
         <div class="modal-footer" style="padding-top:12px; border-top:none;">
           <button type="button" class="btn btn-secondary" id="change-pin-cancel-btn">Cancel</button>
-          <button type="button" class="btn btn-primary" id="change-pin-request-btn">Request OTP</button>
-          <button type="submit" class="btn btn-warning" id="change-pin-submit-btn" style="display: none;">Verify & Update PIN</button>
+          <button type="submit" class="btn btn-primary" id="change-pin-submit-btn" style="flex: 1;">Update PIN</button>
         </div>
       </form>
     </div>
@@ -1218,7 +1210,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=62"></script>
-  <script src="app.js?v=62"></script>
+  <script src="initial-data.js?v=63"></script>
+  <script src="app.js?v=63"></script>
 </body>
 </html>

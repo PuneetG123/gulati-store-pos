@@ -800,7 +800,7 @@ function setupPOSCartActions() {
   document.getElementById("pos-quick-add-modal-cancel-btn").addEventListener("click", closeQuickAdd);
   
   // Quick Add Form submit handler
-  document.getElementById("pos-quick-add-form").addEventListener("submit", (e) => {
+  document.getElementById("pos-quick-add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const name = document.getElementById("quick-add-name").value.trim();
     const price = parseFloat(document.getElementById("quick-add-price").value);
@@ -834,8 +834,19 @@ function setupPOSCartActions() {
       discountPercent: 0
     };
 
-    state.products.push(newProduct);
-    saveProductsToStorage();
+    // Save to server database
+    try {
+      await fetch('/api/save-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(newProduct)
+      });
+    } catch(err) {
+      console.error("Quick add save product error:", err);
+    }
+
+    // Refresh local cache and UI
+    await initData();
     
     // Add to cart
     addToCart(sku);
@@ -844,8 +855,8 @@ function setupPOSCartActions() {
     document.getElementById("pos-search-input").value = "";
     posSearchQuery = "";
     
-    renderPOSCatalog();
     closeQuickAdd();
+    renderAll();
   });
 
   // Clear Cart
@@ -2976,9 +2987,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (closeBtn) closeBtn.addEventListener("click", closeChangePinModal);
   if (cancelBtn) cancelBtn.addEventListener("click", closeChangePinModal);
 
-  // Step 1: Request OTP
-  if (requestBtn) {
-    requestBtn.addEventListener("click", async () => {
+  // Step 1: Submit PIN change directly to server
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
       const oldPin = document.getElementById("pin-current").value;
       const newPin = document.getElementById("pin-new").value;
       const confirmPin = document.getElementById("pin-confirm").value;
@@ -3008,7 +3021,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch('/api/request-otp', {
+        const response = await fetch('/api/change-pin', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3020,71 +3033,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await response.json();
 
         if (response.ok) {
-          // Transition to Step 2
-          document.getElementById("pin-otp-container").style.display = "block";
-          document.getElementById("pin-otp").required = true;
-          document.getElementById("change-pin-request-btn").style.display = "none";
-          document.getElementById("change-pin-submit-btn").style.display = "block";
-          document.getElementById("pin-otp").focus();
-        } else {
-          errorDiv.textContent = data.error || "Failed to request verification OTP.";
-          errorDiv.style.display = "block";
-        }
-      } catch (err) {
-        console.error("Failed to request OTP:", err);
-        errorDiv.textContent = "Could not connect to server.";
-        errorDiv.style.display = "block";
-      }
-    });
-  }
-
-  // Step 2: Submit OTP and Save
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      
-      const otp = document.getElementById("pin-otp").value;
-      const errorDiv = document.getElementById("change-pin-error");
-      const successDiv = document.getElementById("change-pin-success");
-
-      errorDiv.style.display = "none";
-      successDiv.style.display = "none";
-
-      if (!/^\d{6}$/.test(otp)) {
-        errorDiv.textContent = "OTP must be exactly 6 digits.";
-        errorDiv.style.display = "block";
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/verify-otp', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders()
-          },
-          body: JSON.stringify({ otp })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
           successDiv.style.display = "block";
           
           // Clear inputs
           document.getElementById("pin-current").value = "";
           document.getElementById("pin-new").value = "";
           document.getElementById("pin-confirm").value = "";
-          document.getElementById("pin-otp").value = "";
           
           // Close modal after a brief delay
           setTimeout(closeChangePinModal, 1500);
         } else {
-          errorDiv.textContent = data.error || "Incorrect OTP. Please check your laptop server screen.";
+          errorDiv.textContent = data.error || "Failed to update security PIN.";
           errorDiv.style.display = "block";
         }
       } catch (err) {
-        console.error("Failed to verify OTP:", err);
+        console.error("Failed to change PIN:", err);
         errorDiv.textContent = "Could not connect to server.";
         errorDiv.style.display = "block";
       }
