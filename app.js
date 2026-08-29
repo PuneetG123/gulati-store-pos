@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupCSVImportExport();
   setupCustomerLedgerActions();
   setupStoreSettings(); // Initialize store and printer settings listeners
+  setupVoiceBilling();  // Initialize voice recognition billing listeners
   
   // Initial renders
   renderAll();
@@ -4195,4 +4196,228 @@ function parseFallbackPdfLines(sortedYKeys, rowsByY) {
 
   document.getElementById("distributor-mapping-section").style.display = "block";
   document.getElementById("distributor-preview-container").style.display = "block";
+}
+
+// =======================================================
+// VOICE COMMAND BILLING SYSTEM
+// =======================================================
+function setupVoiceBilling() {
+  const micBtn = document.getElementById("pos-mic-btn");
+  const overlay = document.getElementById("pos-voice-overlay");
+  const closeBtn = document.getElementById("pos-voice-close-btn");
+  const interimText = document.getElementById("voice-interim-text");
+
+  if (!micBtn || !overlay || !closeBtn || !interimText) return;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn("Web Speech API is not supported in this browser.");
+    micBtn.style.display = "none";
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-IN'; // Indian English / Hindi Accent optimization
+
+  let isRecording = false;
+
+  const startRecording = () => {
+    try {
+      recognition.start();
+      isRecording = true;
+      micBtn.classList.add("recording");
+      overlay.style.display = "flex";
+      interimText.innerText = "Listening...";
+    } catch (e) {
+      console.error("Speech Recognition Error:", e);
+    }
+  };
+
+  const stopRecording = () => {
+    recognition.stop();
+    isRecording = false;
+    micBtn.classList.remove("recording");
+    overlay.style.display = "none";
+  };
+
+  micBtn.addEventListener("click", () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  });
+
+  closeBtn.addEventListener("click", () => {
+    stopRecording();
+  });
+
+  recognition.onresult = (event) => {
+    let interimTranscript = '';
+    let finalTranscript = '';
+
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript;
+      } else {
+        interimTranscript += event.results[i][0].transcript;
+      }
+    }
+
+    if (interimTranscript) {
+      interimText.innerText = interimTranscript;
+    }
+
+    if (finalTranscript) {
+      stopRecording();
+      processVoiceBillingCommand(finalTranscript);
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.warn("Speech recognition error:", event.error);
+    stopRecording();
+    if (event.error !== 'aborted') {
+      showVoiceToast("Speech error: " + event.error, true);
+    }
+  };
+
+  recognition.onend = () => {
+    if (isRecording) {
+      stopRecording();
+    }
+  };
+}
+
+async function processVoiceBillingCommand(rawText) {
+  let text = String(rawText).trim().toLowerCase();
+  console.log("[Voice Command]:", text);
+
+  // Normalize spoken digits & symbols (e.g. "one" -> "1", "kilo" -> "kg")
+  text = text.replace(/\bzero\b/g, "0")
+             .replace(/\bone\b/g, "1")
+             .replace(/\btwo\b/g, "2")
+             .replace(/\bthree\b/g, "3")
+             .replace(/\bfour\b/g, "4")
+             .replace(/\bfive\b/g, "5")
+             .replace(/\bsix\b/g, "6")
+             .replace(/\bseven\b/g, "7")
+             .replace(/\beight\b/g, "8")
+             .replace(/\bnine\b/g, "9")
+             .replace(/\bten\b/g, "10")
+             .replace(/\bhundred\b/g, "100")
+             .replace(/\bkg\b|\bkilo\b|\bkilogram\b|\bkilograms\b/g, "kg")
+             .replace(/\bliter\b|\bliters\b|\blitre\b|\blitres\b/g, "L")
+             .replace(/\bgram\b|\bgrams\b/g, "g")
+             .replace(/\bml\b|\bmilliliter\b|\bmilliliters\b|\bmillilitre\b|\bmillilitres\b/g, "ml");
+
+  // Regex parser to match product description and trailing price
+  const priceRegex = /(\d+(?:\.\d+)?)\s*(?:rs|rupees|rupee|inr)?$/i;
+  const match = text.match(priceRegex);
+
+  if (!match) {
+    showVoiceToast("Could not understand price. Speak e.g., 'Rajma 1kg 140 Rs'", true);
+    return;
+  }
+
+  const price = parseFloat(match[1]);
+  // Extract product name (everything before the price match)
+  let name = String(rawText).substring(0, match.index).trim();
+  
+  if (!name || isNaN(price) || price <= 0) {
+    showVoiceToast("Please speak product name and price.", true);
+    return;
+  }
+
+  // Capitalize first letter of product name for neat inventory view
+  name = name.charAt(0).toUpperCase() + name.slice(1);
+
+  // Auto-detect unit from product name
+  let unit = "pcs";
+  const nameLower = name.toLowerCase();
+  if (/\b(kg|kilo|kilogram)\b/.test(nameLower)) unit = "kg";
+  else if (/\b(g|gram)\b/.test(nameLower)) unit = "g";
+  else if (/\b(l|liter|litre)\b/.test(nameLower)) unit = "L";
+  else if (/\b(ml|milliliter|millilitre)\b/.test(nameLower)) unit = "ml";
+  else if (/\b(pack|packet|pkt)\b/.test(nameLower)) unit = "pack";
+
+  // Check if item already exists in catalog (case-insensitive name match)
+  const existingProduct = state.products.find(p => p.name.toLowerCase() === name.toLowerCase());
+
+  if (existingProduct) {
+    // Add to cart directly
+    addToCart(existingProduct.sku);
+    renderAll();
+    showVoiceToast(`Added ${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
+    return;
+  }
+
+  // Product is new! Save to database & add to cart
+  const sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
+  const hsn = suggestHsn(name);
+
+  const newProduct = {
+    sku,
+    name,
+    category: "General FMCG",
+    hsn,
+    costPrice: Number((price * 0.8).toFixed(2)), // default ~20% margin
+    sellingPrice: price,
+    gstSlab: 18, // default to 18% standard GST rate
+    stock: 100, // seed initial stock
+    reorderLevel: 5,
+    unit: unit,
+    discountPercent: 0
+  };
+
+  // Show a mini-loader message
+  showVoiceToast(`Creating ${name}...`);
+
+  try {
+    const response = await fetch('/api/save-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(newProduct)
+    });
+
+    if (response.ok) {
+      await initData();
+      addToCart(sku);
+      renderAll();
+      showVoiceToast(`Saved & Added ${name} (₹${price})`);
+    } else {
+      showVoiceToast("Error saving product to server database", true);
+    }
+  } catch (err) {
+    console.error("Voice Quick Add failed:", err);
+    showVoiceToast("Network error. Failed to save product.", true);
+  }
+}
+
+function showVoiceToast(message, isError = false) {
+  const oldToast = document.querySelector(".voice-toast");
+  if (oldToast) oldToast.remove();
+
+  const toast = document.createElement("div");
+  toast.className = "voice-toast";
+  if (isError) {
+    toast.style.borderLeftColor = "#ef4444";
+  }
+
+  toast.innerHTML = `
+    <span style="font-size: 16px;">${isError ? '⚠️' : '🎙️'}</span>
+    <span>${message}</span>
+  `;
+
+  document.body.appendChild(toast);
+
+  // Auto remove after 3.5 seconds
+  setTimeout(() => {
+    if (toast && toast.parentElement) {
+      toast.style.animation = "toastSlideIn 0.3s reverse";
+      setTimeout(() => toast.remove(), 280);
+    }
+  }, 3500);
 }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=69">
+  <link rel="stylesheet" href="styles.css?v=70">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -258,10 +258,13 @@
           
           <!-- POS Left Panel: Catalog list & Quick Tab Filter -->
           <div class="pos-catalog-panel">
-            <div class="pos-actions-header">
-              <div class="search-wrapper">
+            <div class="pos-actions-header" style="display: flex; gap: 8px; width: 100%;">
+              <div class="search-wrapper" style="flex: 1;">
                 <input type="text" id="pos-search-input" class="form-control" placeholder="Search product by SKU or Name...">
               </div>
+              <button id="pos-mic-btn" class="btn btn-secondary" type="button" title="Add items via voice command" style="display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; border-radius: var(--radius-md); background: var(--bg-card-hover); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; transition: all 0.2s;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mic-icon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
             </div>
             
             <div class="catalog-scroll">
@@ -1206,11 +1209,28 @@
     </div>
   </div>
 
+  <!-- Voice Recognition Status Overlay -->
+  <div id="pos-voice-overlay" class="voice-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; color: #fff;">
+    <div class="voice-card" style="background: #1e1e2e; border: 1px solid #334155; border-radius: 12px; padding: 32px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 330px; width: 90%;">
+      <div class="pulse-ring" style="width: 80px; height: 80px; border-radius: 50%; background: rgba(139, 92, 246, 0.2); display: flex; align-items: center; justify-content: center; animation: voicePulse 1.5s infinite;">
+        <div class="mic-circle" style="width: 50px; height: 50px; border-radius: 50%; background: #8B5CF6; display: flex; align-items: center; justify-content: center; color: #fff;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #fff;">Listening...</h3>
+        <p style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; line-height: 1.4;">Speak now, e.g. <br><strong style="color: #a78bfa;">"Rajma 1kg 140Rs"</strong></p>
+      </div>
+      <div id="voice-interim-text" style="font-size: 14px; font-style: italic; color: #e2e8f0; height: 20px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;">Say something...</div>
+      <button id="pos-voice-close-btn" class="btn btn-secondary" type="button" style="margin-top: 8px; width: 100%;">Cancel</button>
+    </div>
+  </div>
+
   <!-- Javascript Modules -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=69"></script>
-  <script src="app.js?v=69"></script>
+  <script src="initial-data.js?v=70"></script>
+  <script src="app.js?v=70"></script>
 </body>
 </html>

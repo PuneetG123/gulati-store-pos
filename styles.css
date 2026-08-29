@@ -1823,3 +1823,67 @@ tr:hover td {
 .shake-box {
   animation: shake 0.4s ease;
 }
+
+/* Voice Command Billing Animations & States */
+@keyframes voicePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(139, 92, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+#pos-mic-btn.recording {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #fff !important;
+  animation: voiceMicPulse 1.2s infinite;
+}
+
+@keyframes voiceMicPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+/* Toast Notifications for voice additions */
+.voice-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #1e1e2d;
+  color: #fff;
+  border-left: 4px solid #10b981;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  padding: 14px 20px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 320px;
+}
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
