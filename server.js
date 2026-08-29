@@ -433,27 +433,6 @@ app.get('/api/data', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/admin-wipe-database', authenticateToken, async (req, res) => {
-  const { confirmWipe } = req.body;
-  if (confirmWipe !== "WIPE_GULATI_STORE_DATA_2026") {
-    return res.status(400).json({ error: "Invalid confirmation token" });
-  }
-
-  try {
-    console.log("[ADMIN] Wiping products, transactions, customers, and customer_ledger tables...");
-    await dbRun("DELETE FROM products");
-    await dbRun("DELETE FROM transactions");
-    await dbRun("DELETE FROM customers");
-    await dbRun("DELETE FROM customer_ledger");
-    if (pgPool) {
-      await dbRun("DELETE FROM print_queue");
-    }
-    console.log("[ADMIN] Database tables wiped successfully.");
-    res.json({ success: true, message: "Database wiped successfully." });
-  } catch (err) {
-    handleDatabaseError(err, res, "Failed to wipe database");
-  }
-});
 
 // Save All Data API
 app.post('/api/save', authenticateToken, async (req, res) => {
