@@ -806,6 +806,10 @@ function setupPOSCartActions() {
   // Quick Add Form submit handler
   document.getElementById("pos-quick-add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const cancelBtn = document.getElementById("pos-quick-add-modal-cancel-btn");
+    
     const name = document.getElementById("quick-add-name").value.trim();
     const price = parseFloat(document.getElementById("quick-add-price").value);
     const gst = parseInt(document.getElementById("quick-add-gst").value);
@@ -815,6 +819,24 @@ function setupPOSCartActions() {
     if (!name || isNaN(price) || price <= 0) {
       alert("Please enter a valid Product Name and Price.");
       return;
+    }
+
+    // 🛑 Duplicate Check: Case-insensitive name match
+    const exists = state.products.some(p => p.name.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      alert(`Validation Error: A product named "${name}" already exists in the inventory!`);
+      return;
+    }
+
+    // 🔒 Disable buttons and show processing text to prevent double clicks
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Saving...";
+      submitBtn.style.opacity = "0.7";
+    }
+    if (cancelBtn) {
+      cancelBtn.disabled = true;
+      cancelBtn.style.opacity = "0.7";
     }
 
     // Generate local unique SKU
@@ -858,6 +880,17 @@ function setupPOSCartActions() {
     // Clear search query & input
     document.getElementById("pos-search-input").value = "";
     posSearchQuery = "";
+    
+    // Re-enable buttons
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = "Save & Add to Cart";
+      submitBtn.style.opacity = "1";
+    }
+    if (cancelBtn) {
+      cancelBtn.disabled = false;
+      cancelBtn.style.opacity = "1";
+    }
     
     closeQuickAdd();
     renderAll();
