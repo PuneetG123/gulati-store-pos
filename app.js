@@ -4336,6 +4336,7 @@ function setupVoicePriceModalListeners() {
       const name = document.getElementById("voice-price-name").value.trim();
       const price = parseFloat(document.getElementById("voice-price-input").value);
       const unit = document.getElementById("voice-price-unit").value;
+      const quantity = parseFloat(document.getElementById("voice-price-qty")?.value) || 1;
       const errorDiv = document.getElementById("voice-price-error");
       const submitBtn = document.getElementById("voice-price-submit-btn");
 
@@ -4358,10 +4359,10 @@ function setupVoicePriceModalListeners() {
       }
 
       // Strict duplicate check against state.products
-      const duplicate = state.products.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+      const duplicate = findMatchingProduct(name, unit);
       if (duplicate) {
         if (errorDiv) {
-          errorDiv.innerText = `A product named "${duplicate.name}" already exists in the inventory!`;
+          errorDiv.innerText = `A product named "${duplicate.name}" with unit ${duplicate.unit || unit} already exists in the inventory!`;
           errorDiv.style.display = "block";
         }
         return;
@@ -4372,7 +4373,7 @@ function setupVoicePriceModalListeners() {
         submitBtn.innerText = "Saving...";
       }
 
-      const success = await saveVoiceProduct(name, price, unit, voicePriceAddToBilling);
+      const success = await saveVoiceProduct(name, price, unit, voicePriceAddToBilling, quantity);
       if (success) {
         closeVoicePriceModal();
       } else {
@@ -4385,12 +4386,13 @@ function setupVoicePriceModalListeners() {
   }
 }
 
-function openVoicePriceModal(name, unit, price = null, addToCartAfterSave = true) {
+function openVoicePriceModal(name, unit, quantity = 1, price = null, addToCartAfterSave = true) {
   voicePriceAddToBilling = addToCartAfterSave;
 
   const modal = document.getElementById("pos-voice-price-modal");
   const nameInput = document.getElementById("voice-price-name");
   const unitSelect = document.getElementById("voice-price-unit");
+  const qtyInput = document.getElementById("voice-price-qty");
   const priceInput = document.getElementById("voice-price-input");
   const errorDiv = document.getElementById("voice-price-error");
   const submitBtn = document.getElementById("voice-price-submit-btn");
@@ -4399,6 +4401,7 @@ function openVoicePriceModal(name, unit, price = null, addToCartAfterSave = true
 
   nameInput.value = name;
   if (unitSelect) unitSelect.value = unit || "pcs";
+  if (qtyInput) qtyInput.value = (quantity && quantity > 0) ? quantity : 1;
   priceInput.value = (price && price > 0) ? price : "";
 
   if (errorDiv) {
@@ -4438,35 +4441,38 @@ function normalizeSpokenName(str) {
     .replace(/\beight\b/g, "8")
     .replace(/\bnine\b/g, "9")
     .replace(/\bten\b/g, "10")
-    .replace(/(\d+)\s*(kg|kilo|kilogram|kilograms)\b/g, "$1kg")
-    .replace(/(\d+)\s*(g|gram|grams)\b/g, "$1g")
-    .replace(/(\d+)\s*(l|liter|liters|litre|litres)\b/g, "$1l")
-    .replace(/(\d+)\s*(ml|milliliter|milliliters)\b/g, "$1ml")
-    .replace(/(\d+)\s*(pack|packet|packets|pkt|pkts)\b/g, "$1pack")
-    .replace(/(\d+)\s*(pc|pcs|piece|pieces)\b/g, "$1pcs")
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function findMatchingProduct(queryName) {
+function findMatchingProduct(queryName, queryUnit = null) {
   if (!queryName || !state.products || !state.products.length) return null;
   const qRaw = String(queryName).trim().toLowerCase();
+
+  // If queryUnit is specified, check for exact match on both name & unit first
+  if (queryUnit) {
+    const matchBoth = state.products.find(p =>
+      p.name.trim().toLowerCase() === qRaw &&
+      p.unit && p.unit.toLowerCase() === queryUnit.toLowerCase()
+    );
+    if (matchBoth) return matchBoth;
+  }
 
   // 1. Direct exact match
   let found = state.products.find(p => p.name.trim().toLowerCase() === qRaw);
   if (found) return found;
 
-  // 2. Normalized match (punctuation stripped, units standardized)
+  // 2. Normalized match (punctuation stripped, spaces unified)
   const qNorm = normalizeSpokenName(queryName);
   found = state.products.find(p => normalizeSpokenName(p.name) === qNorm);
   if (found) return found;
 
-  // 3. Spaceless compact match (e.g. 'rajma1kg' vs 'rajma 1 kg')
+  // 3. Spaceless compact match (e.g. 'rajma' vs 'rajma ')
   const qCompact = qNorm.replace(/\s+/g, '');
   found = state.products.find(p => normalizeSpokenName(p.name).replace(/\s+/g, '') === qCompact);
   if (found) return found;
 
-  // 4. Prefix or containment match (e.g. spoken 'Rajma 1kg' matches 'Rajma')
+  // 4. Prefix or containment match
   found = state.products.find(p => {
     const pCompact = normalizeSpokenName(p.name).replace(/\s+/g, '');
     return pCompact === qCompact || qCompact.startsWith(pCompact) || pCompact.startsWith(qCompact);
@@ -4474,95 +4480,121 @@ function findMatchingProduct(queryName) {
   return found || null;
 }
 
+function cleanVoiceItemName(s) {
+  if (!s) return '';
+  let clean = s.replace(/[.,!?;:]+$/, '').trim();
+  return clean.split(' ').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function mapVoiceUnit(rawUnit) {
+  if (!rawUnit) return 'pcs';
+  if (/^(kg|kilo|kilogram|kilograms)$/i.test(rawUnit)) return 'kg';
+  if (/^(g|gram|grams)$/i.test(rawUnit)) return 'g';
+  if (/^(l|liter|liters|litre|litres)$/i.test(rawUnit)) return 'L';
+  if (/^(ml|milliliter|millilitres|millilitre|milliliters)$/i.test(rawUnit)) return 'ml';
+  if (/^(pack|packet|packets|pkt|pkts)$/i.test(rawUnit)) return 'pack';
+  return 'pcs';
+}
+
+function parseVoiceProductCommand(rawText) {
+  let text = String(rawText || '').trim();
+  
+  let norm = text.toLowerCase()
+    .replace(/\bzero\b/g, '0').replace(/\bone\b/g, '1').replace(/\btwo\b/g, '2')
+    .replace(/\bthree\b/g, '3').replace(/\bfour\b/g, '4').replace(/\bfive\b/g, '5')
+    .replace(/\bsix\b/g, '6').replace(/\bseven\b/g, '7').replace(/\beight\b/g, '8')
+    .replace(/\bnine\b/g, '9').replace(/\bten\b/g, '10')
+    .replace(/\bhundred\b/g, '100');
+
+  // Strip leading 'add'
+  norm = norm.replace(/^add\s+/i, '').trim();
+
+  const unitWords = 'kg|kilo|kilogram|kilograms|g|gram|grams|l|liter|liters|litre|litres|ml|milliliter|millilitres|millilitre|milliliters|pack|packet|packets|pkt|pkts|pc|pcs|piece|pieces';
+
+  // Case A: Item + (Qty+Unit or Unit+Qty) + Price
+  // e.g. 'Rajma 1kg 140' or 'Rajma 1 kg 140' or 'Rajma kg 1 140'
+  const regexWithQtyUnitAndPrice = new RegExp('^(.+?)\\s+(?:(\\d+(?:\\.\\d+)?)\\s*(' + unitWords + ')|(' + unitWords + ')\\s+(\\d+(?:\\.\\d+)?))\\s+(\\d+(?:\\.\\d+)?)\\s*(?:rs|rupees|rupee|inr)?\\s*[.,!?;:]*$', 'i');
+  const mFull = norm.match(regexWithQtyUnitAndPrice);
+  if (mFull) {
+    const itemName = cleanVoiceItemName(mFull[1]);
+    const qty = parseFloat(mFull[2] || mFull[5]) || 1;
+    const unit = mapVoiceUnit(mFull[3] || mFull[4]);
+    const priceVal = parseFloat(mFull[6]);
+    return { itemName, unit, quantity: qty, price: priceVal };
+  }
+
+  // Case B: Item + Qty+Unit (NO price)
+  // e.g. 'Rajma 1kg' or 'Rajma 1 kg' or 'Rajma kg 1'
+  const regexWithQtyUnitNoPrice = new RegExp('^(.+?)\\s+(?:(\\d+(?:\\.\\d+)?)\\s*(' + unitWords + ')|(' + unitWords + ')\\s+(\\d+(?:\\.\\d+)?))\\s*[.,!?;:]*$', 'i');
+  const mQtyUnit = norm.match(regexWithQtyUnitNoPrice);
+  if (mQtyUnit) {
+    const itemName = cleanVoiceItemName(mQtyUnit[1]);
+    const qty = parseFloat(mQtyUnit[2] || mQtyUnit[5]) || 1;
+    const unit = mapVoiceUnit(mQtyUnit[3] || mQtyUnit[4]);
+    return { itemName, unit, quantity: qty, price: null };
+  }
+
+  // Case C: Leading Qty/Unit: e.g. '1kg Rajma 140' or '2 packets Maggi 24' or '2 Rajma'
+  const regexLeading = new RegExp('^(\\d+(?:\\.\\d+)?)\\s*(' + unitWords + ')?\\s+(.+?)(?:\\s+(\\d+(?:\\.\\d+)?)\\s*(?:rs|rupees|rupee|inr)?)?\\s*[.,!?;:]*$', 'i');
+  const mLead = norm.match(regexLeading);
+  if (mLead && isNaN(mLead[3])) {
+    return {
+      itemName: cleanVoiceItemName(mLead[3]),
+      unit: mLead[2] ? mapVoiceUnit(mLead[2]) : 'pcs',
+      quantity: parseFloat(mLead[1]) || 1,
+      price: mLead[4] ? parseFloat(mLead[4]) : null
+    };
+  }
+
+  // Case D: Item + Price (e.g. 'Rajma 140' or 'Rajma 140rs')
+  const regexItemPrice = /^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:rs|rupees|rupee|inr)?\s*[.,!?;:]*$/i;
+  const mPrice = norm.match(regexItemPrice);
+  if (mPrice) {
+    return {
+      itemName: cleanVoiceItemName(mPrice[1]),
+      unit: 'pcs',
+      quantity: 1,
+      price: parseFloat(mPrice[2])
+    };
+  }
+
+  // Case E: Item only (e.g. 'Rajma')
+  return {
+    itemName: cleanVoiceItemName(norm),
+    unit: 'pcs',
+    quantity: 1,
+    price: null
+  };
+}
+
 async function processVoiceBillingCommand(rawText, mode = 'billing') {
-  let text = String(rawText).trim();
-  console.log(`[Voice Command (${mode})]:`, text);
+  console.log(`[Voice Command (${mode})]:`, rawText);
 
-  // Normalize numbers and common units
-  let normalizedText = text.toLowerCase()
-    .replace(/\bzero\b/g, "0")
-    .replace(/\bone\b/g, "1")
-    .replace(/\btwo\b/g, "2")
-    .replace(/\bthree\b/g, "3")
-    .replace(/\bfour\b/g, "4")
-    .replace(/\bfive\b/g, "5")
-    .replace(/\bsix\b/g, "6")
-    .replace(/\bseven\b/g, "7")
-    .replace(/\beight\b/g, "8")
-    .replace(/\bnine\b/g, "9")
-    .replace(/\bten\b/g, "10")
-    .replace(/\bhundred\b/g, "100")
-    .replace(/(\d+)\s*(kg|kilo|kilogram|kilograms)\b/g, "$1kg")
-    .replace(/(\d+)\s*(g|gram|grams)\b/g, "$1g")
-    .replace(/(\d+)\s*(l|liter|liters|litre|litres)\b/g, "$1L")
-    .replace(/(\d+)\s*(ml|milliliter|milliliters)\b/g, "$1ml")
-    .replace(/(\d+)\s*(pack|packet|packets|pkt|pkts)\b/g, "$1pack")
-    .replace(/(\d+)\s*(pc|pcs|piece|pieces)\b/g, "$1pcs");
+  const parsed = parseVoiceProductCommand(rawText);
+  const { itemName, unit, quantity, price } = parsed;
 
-  // Check if trailing price was spoken: e.g. "140", "140rs", "140 rupees"
-  const priceRegex = /(\d+(?:\.\d+)?)\s*(?:rs|rupees|rupee|inr)?\s*[.,!?;:]*$/i;
-  const priceMatch = normalizedText.match(priceRegex);
-
-  let detectedPrice = null;
-  let rawName = text.trim();
-
-  if (priceMatch) {
-    detectedPrice = parseFloat(priceMatch[1]);
-    const candName = normalizedText.substring(0, priceMatch.index).trim();
-    if (candName.length > 0) {
-      rawName = candName;
-    }
-  }
-
-  // Clean product name: strip leading 'add' and any trailing punctuation
-  let name = rawName.trim().replace(/^add\s+/i, '').replace(/[.,!?;:]+$/, '').trim();
-  if (name.length > 0) {
-    name = name.charAt(0).toUpperCase() + name.slice(1);
-  }
-
-  if (!name) {
+  if (!itemName) {
     showVoiceToast("Could not recognize product name. Please speak clearly.", true);
     return;
   }
 
-  // Check for leading multiplier quantity: e.g. "2 Rajma 1kg" or "3 Parle 1 packet"
-  let quantity = 1;
-  const leadingQtyMatch = name.match(/^(\d+)\s+(.+)$/);
-  if (leadingQtyMatch) {
-    const candQty = parseInt(leadingQtyMatch[1], 10);
-    const candRemainder = leadingQtyMatch[2].trim();
-    if (findMatchingProduct(candRemainder)) {
-      quantity = candQty;
-      name = candRemainder;
-    }
-  }
-
-  // Auto-detect unit
-  let unit = "pcs";
-  const nameLower = name.toLowerCase();
-  if (/\b(kg|kilo|kilogram)\b/.test(nameLower)) unit = "kg";
-  else if (/\b(g|gram)\b/.test(nameLower)) unit = "g";
-  else if (/\b(l|liter|litre)\b/.test(nameLower)) unit = "L";
-  else if (/\b(ml|milliliter|millilitre)\b/.test(nameLower)) unit = "ml";
-  else if (/\b(pack|packet|pkt)\b/.test(nameLower)) unit = "pack";
-
   // Check if item already exists in catalog using smart matching
-  const existingProduct = findMatchingProduct(name);
+  const existingProduct = findMatchingProduct(itemName, unit);
 
   // =======================================================
   // MODE 1: POS BILLING PAGE
   // =======================================================
   if (mode === 'billing') {
     if (existingProduct) {
-      // Product exists! Directly add to cart without popup
+      // Product exists! Directly add to cart with spoken quantity without popup
       addToCart(existingProduct.sku, quantity);
       renderAll();
-      showVoiceToast(`Added ${quantity > 1 ? quantity + 'x ' : ''}${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
+      showVoiceToast(`Added ${quantity > 1 ? quantity + ' ' + (existingProduct.unit || '') + ' ' : ''}${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
       return;
     }
 
-    // Product DOES NOT exist in inventory! Prompt for price popup
-    openVoicePriceModal(name, unit, detectedPrice, true);
+    // Product DOES NOT exist in inventory! Prompt for price popup with Item Name, Unit, and Quantity
+    openVoicePriceModal(itemName, unit, quantity, price, true);
     return;
   }
 
@@ -4571,21 +4603,21 @@ async function processVoiceBillingCommand(rawText, mode = 'billing') {
   // =======================================================
   if (mode === 'inventory') {
     if (existingProduct) {
-      showVoiceToast(`"${existingProduct.name}" already exists in inventory!`, true);
+      showVoiceToast(`"${existingProduct.name}" (${existingProduct.unit}) already exists in inventory!`, true);
       return;
     }
 
-    if (!detectedPrice || isNaN(detectedPrice) || detectedPrice <= 0) {
+    if (!price || isNaN(price) || price <= 0) {
       // Price was not spoken, open modal to let user enter it
-      openVoicePriceModal(name, unit, null, false);
+      openVoicePriceModal(itemName, unit, quantity, null, false);
       return;
     }
 
-    await saveVoiceProduct(name, detectedPrice, unit, false);
+    await saveVoiceProduct(itemName, price, unit, false, quantity);
   }
 }
 
-async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
+async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true, quantity = 1) {
   name = String(name).replace(/[.,!?;:]+$/, '').trim();
   price = parseFloat(price);
 
@@ -4595,9 +4627,9 @@ async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
   }
 
   // Strict duplicate check against state.products
-  const existing = findMatchingProduct(name);
+  const existing = findMatchingProduct(name, unit);
   if (existing) {
-    showVoiceToast(`A product named "${existing.name}" already exists in inventory!`, true);
+    showVoiceToast(`A product named "${existing.name}" (${existing.unit}) already exists in inventory!`, true);
     return false;
   }
 
@@ -4647,18 +4679,18 @@ async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
   try {
     await initData();
     if (addToCartAfterSave) {
-      addToCart(sku);
+      addToCart(sku, quantity);
       renderAll();
-      showVoiceToast(`Saved & Added ${name} (₹${price})`);
+      showVoiceToast(`Saved & Added ${quantity > 1 ? quantity + ' ' + unit + ' ' : ''}${name} (₹${price})`);
     } else {
       renderAll();
-      showVoiceToast(`Saved ${name} (₹${price}) to Inventory`);
+      showVoiceToast(`Saved ${name} (${unit}) (₹${price}) to Inventory`);
     }
     return true;
   } catch (uiErr) {
     console.error("Post-save UI refresh error:", uiErr);
     renderAll();
-    showVoiceToast(`Saved ${name} (₹${price}) to Inventory`);
+    showVoiceToast(`Saved ${name} (${unit}) to Inventory`);
     return true;
   }
 }
