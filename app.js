@@ -913,15 +913,16 @@ function setupPOSCartActions() {
   });
 }
 
-function addToCart(sku) {
+function addToCart(sku, qty = 1) {
   const product = state.products.find(p => p.sku === sku);
   if (!product) return;
 
+  const count = typeof qty === 'number' && qty > 0 ? qty : 1;
   const existingIndex = state.cart.findIndex(item => (item.product.sku || item.product.id) === sku);
   
   if (existingIndex !== -1) {
     const existing = state.cart[existingIndex];
-    existing.quantity = Number((existing.quantity + 1).toFixed(2));
+    existing.quantity = Number((existing.quantity + count).toFixed(2));
     // Move updated item to the top of the cart array so it is immediately visible!
     state.cart.splice(existingIndex, 1);
     state.cart.unshift(existing);
@@ -929,7 +930,7 @@ function addToCart(sku) {
     // Unshift new item to the top of the cart array!
     state.cart.unshift({
       product: { ...product },
-      quantity: 1
+      quantity: count
     });
   }
 
@@ -4422,45 +4423,99 @@ function closeVoicePriceModal() {
   if (modal) modal.style.display = "none";
 }
 
+function normalizeSpokenName(str) {
+  if (!str) return '';
+  return str.toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ' ')
+    .replace(/\bzero\b/g, "0")
+    .replace(/\bone\b/g, "1")
+    .replace(/\btwo\b/g, "2")
+    .replace(/\bthree\b/g, "3")
+    .replace(/\bfour\b/g, "4")
+    .replace(/\bfive\b/g, "5")
+    .replace(/\bsix\b/g, "6")
+    .replace(/\bseven\b/g, "7")
+    .replace(/\beight\b/g, "8")
+    .replace(/\bnine\b/g, "9")
+    .replace(/\bten\b/g, "10")
+    .replace(/(\d+)\s*(kg|kilo|kilogram|kilograms)\b/g, "$1kg")
+    .replace(/(\d+)\s*(g|gram|grams)\b/g, "$1g")
+    .replace(/(\d+)\s*(l|liter|liters|litre|litres)\b/g, "$1l")
+    .replace(/(\d+)\s*(ml|milliliter|milliliters)\b/g, "$1ml")
+    .replace(/(\d+)\s*(pack|packet|packets|pkt|pkts)\b/g, "$1pack")
+    .replace(/(\d+)\s*(pc|pcs|piece|pieces)\b/g, "$1pcs")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findMatchingProduct(queryName) {
+  if (!queryName || !state.products || !state.products.length) return null;
+  const qRaw = String(queryName).trim().toLowerCase();
+
+  // 1. Direct exact match
+  let found = state.products.find(p => p.name.trim().toLowerCase() === qRaw);
+  if (found) return found;
+
+  // 2. Normalized match (punctuation stripped, units standardized)
+  const qNorm = normalizeSpokenName(queryName);
+  found = state.products.find(p => normalizeSpokenName(p.name) === qNorm);
+  if (found) return found;
+
+  // 3. Spaceless compact match (e.g. 'rajma1kg' vs 'rajma 1 kg')
+  const qCompact = qNorm.replace(/\s+/g, '');
+  found = state.products.find(p => normalizeSpokenName(p.name).replace(/\s+/g, '') === qCompact);
+  if (found) return found;
+
+  // 4. Prefix or containment match (e.g. spoken 'Rajma 1kg' matches 'Rajma')
+  found = state.products.find(p => {
+    const pCompact = normalizeSpokenName(p.name).replace(/\s+/g, '');
+    return pCompact === qCompact || qCompact.startsWith(pCompact) || pCompact.startsWith(qCompact);
+  });
+  return found || null;
+}
+
 async function processVoiceBillingCommand(rawText, mode = 'billing') {
-  let text = String(rawText).trim().toLowerCase();
+  let text = String(rawText).trim();
   console.log(`[Voice Command (${mode})]:`, text);
 
-  // Normalize spoken digits & symbols
-  text = text.replace(/\bzero\b/g, "0")
-             .replace(/\bone\b/g, "1")
-             .replace(/\btwo\b/g, "2")
-             .replace(/\bthree\b/g, "3")
-             .replace(/\bfour\b/g, "4")
-             .replace(/\bfive\b/g, "5")
-             .replace(/\bsix\b/g, "6")
-             .replace(/\bseven\b/g, "7")
-             .replace(/\beight\b/g, "8")
-             .replace(/\bnine\b/g, "9")
-             .replace(/\bten\b/g, "10")
-             .replace(/\bhundred\b/g, "100")
-             .replace(/\bkg\b|\bkilo\b|\bkilogram\b|\bkilograms\b/g, "kg")
-             .replace(/\bliter\b|\bliters\b|\blitre\b|\blitres\b/g, "L")
-             .replace(/\bgram\b|\bgrams\b/g, "g")
-             .replace(/\bml\b|\bmilliliter\b|\bmilliliters\b|\bmillilitre\b|\bmillilitres\b/g, "ml");
+  // Normalize numbers and common units
+  let normalizedText = text.toLowerCase()
+    .replace(/\bzero\b/g, "0")
+    .replace(/\bone\b/g, "1")
+    .replace(/\btwo\b/g, "2")
+    .replace(/\bthree\b/g, "3")
+    .replace(/\bfour\b/g, "4")
+    .replace(/\bfive\b/g, "5")
+    .replace(/\bsix\b/g, "6")
+    .replace(/\bseven\b/g, "7")
+    .replace(/\beight\b/g, "8")
+    .replace(/\bnine\b/g, "9")
+    .replace(/\bten\b/g, "10")
+    .replace(/\bhundred\b/g, "100")
+    .replace(/(\d+)\s*(kg|kilo|kilogram|kilograms)\b/g, "$1kg")
+    .replace(/(\d+)\s*(g|gram|grams)\b/g, "$1g")
+    .replace(/(\d+)\s*(l|liter|liters|litre|litres)\b/g, "$1L")
+    .replace(/(\d+)\s*(ml|milliliter|milliliters)\b/g, "$1ml")
+    .replace(/(\d+)\s*(pack|packet|packets|pkt|pkts)\b/g, "$1pack")
+    .replace(/(\d+)\s*(pc|pcs|piece|pieces)\b/g, "$1pcs");
 
   // Check if trailing price was spoken: e.g. "140", "140rs", "140 rupees"
-  const priceRegex = /(\d+(?:\.\d+)?)\s*(?:rs|rupees|rupee|inr)?$/i;
-  const priceMatch = text.match(priceRegex);
+  const priceRegex = /(\d+(?:\.\d+)?)\s*(?:rs|rupees|rupee|inr)?\s*[.,!?;:]*$/i;
+  const priceMatch = normalizedText.match(priceRegex);
 
   let detectedPrice = null;
-  let rawName = rawText.trim();
+  let rawName = text.trim();
 
   if (priceMatch) {
     detectedPrice = parseFloat(priceMatch[1]);
-    const candName = rawText.substring(0, priceMatch.index).trim();
+    const candName = normalizedText.substring(0, priceMatch.index).trim();
     if (candName.length > 0) {
       rawName = candName;
     }
   }
 
-  // Clean and capitalize product name
-  let name = rawName.trim().replace(/^add\s+/i, '').trim();
+  // Clean product name: strip leading 'add' and any trailing punctuation
+  let name = rawName.trim().replace(/^add\s+/i, '').replace(/[.,!?;:]+$/, '').trim();
   if (name.length > 0) {
     name = name.charAt(0).toUpperCase() + name.slice(1);
   }
@@ -4468,6 +4523,18 @@ async function processVoiceBillingCommand(rawText, mode = 'billing') {
   if (!name) {
     showVoiceToast("Could not recognize product name. Please speak clearly.", true);
     return;
+  }
+
+  // Check for leading multiplier quantity: e.g. "2 Rajma 1kg" or "3 Parle 1 packet"
+  let quantity = 1;
+  const leadingQtyMatch = name.match(/^(\d+)\s+(.+)$/);
+  if (leadingQtyMatch) {
+    const candQty = parseInt(leadingQtyMatch[1], 10);
+    const candRemainder = leadingQtyMatch[2].trim();
+    if (findMatchingProduct(candRemainder)) {
+      quantity = candQty;
+      name = candRemainder;
+    }
   }
 
   // Auto-detect unit
@@ -4479,8 +4546,8 @@ async function processVoiceBillingCommand(rawText, mode = 'billing') {
   else if (/\b(ml|milliliter|millilitre)\b/.test(nameLower)) unit = "ml";
   else if (/\b(pack|packet|pkt)\b/.test(nameLower)) unit = "pack";
 
-  // Check if item already exists in catalog (case-insensitive name match)
-  const existingProduct = state.products.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  // Check if item already exists in catalog using smart matching
+  const existingProduct = findMatchingProduct(name);
 
   // =======================================================
   // MODE 1: POS BILLING PAGE
@@ -4488,9 +4555,9 @@ async function processVoiceBillingCommand(rawText, mode = 'billing') {
   if (mode === 'billing') {
     if (existingProduct) {
       // Product exists! Directly add to cart without popup
-      addToCart(existingProduct.sku);
+      addToCart(existingProduct.sku, quantity);
       renderAll();
-      showVoiceToast(`Added ${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
+      showVoiceToast(`Added ${quantity > 1 ? quantity + 'x ' : ''}${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
       return;
     }
 
@@ -4519,7 +4586,7 @@ async function processVoiceBillingCommand(rawText, mode = 'billing') {
 }
 
 async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
-  name = String(name).trim();
+  name = String(name).replace(/[.,!?;:]+$/, '').trim();
   price = parseFloat(price);
 
   if (!name || isNaN(price) || price <= 0) {
@@ -4528,9 +4595,9 @@ async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
   }
 
   // Strict duplicate check against state.products
-  const exists = state.products.some(p => p.name.trim().toLowerCase() === name.toLowerCase());
-  if (exists) {
-    showVoiceToast(`A product named "${name}" already exists in inventory!`, true);
+  const existing = findMatchingProduct(name);
+  if (existing) {
+    showVoiceToast(`A product named "${existing.name}" already exists in inventory!`, true);
     return false;
   }
 
@@ -4553,37 +4620,46 @@ async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
 
   showVoiceToast(`Saving ${name}...`);
 
+  let response;
   try {
-    const response = await fetch('/api/save-product', {
+    response = await fetch('/api/save-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(newProduct)
     });
-
-    if (response.ok) {
-      await initData();
-      if (addToCartAfterSave) {
-        addToCart(sku);
-        renderAll();
-        showVoiceToast(`Saved & Added ${name} (₹${price})`);
-      } else {
-        renderInventoryTable();
-        showVoiceToast(`Saved ${name} (₹${price}) to Inventory`);
-      }
-      return true;
-    } else {
-      let errMsg = "Error saving product to server database";
-      try {
-        const data = await response.json();
-        if (data && data.error) errMsg = data.error;
-      } catch (e) {}
-      showVoiceToast(errMsg, true);
-      return false;
-    }
   } catch (err) {
-    console.error("Voice product save failed:", err);
-    showVoiceToast("Network error. Failed to save product.", true);
+    console.error("Voice product network save failed:", err);
+    showVoiceToast("Network error. Failed to save product to server.", true);
     return false;
+  }
+
+  if (!response || !response.ok) {
+    let errMsg = "Error saving product to server database";
+    try {
+      const data = await response.json();
+      if (data && data.error) errMsg = data.error;
+    } catch (e) {}
+    showVoiceToast(errMsg, true);
+    return false;
+  }
+
+  // Successfully saved to database - refresh state & UI safely!
+  try {
+    await initData();
+    if (addToCartAfterSave) {
+      addToCart(sku);
+      renderAll();
+      showVoiceToast(`Saved & Added ${name} (₹${price})`);
+    } else {
+      renderAll();
+      showVoiceToast(`Saved ${name} (₹${price}) to Inventory`);
+    }
+    return true;
+  } catch (uiErr) {
+    console.error("Post-save UI refresh error:", uiErr);
+    renderAll();
+    showVoiceToast(`Saved ${name} (₹${price}) to Inventory`);
+    return true;
   }
 }
 
