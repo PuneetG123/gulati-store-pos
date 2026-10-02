@@ -4449,35 +4449,30 @@ function findMatchingProduct(queryName, queryUnit = null) {
   if (!queryName || !state.products || !state.products.length) return null;
   const qRaw = String(queryName).trim().toLowerCase();
 
-  // If queryUnit is specified, check for exact match on both name & unit first
+  // If queryUnit is specified, check for exact match on both complete name & unit first
   if (queryUnit) {
     const matchBoth = state.products.find(p =>
-      p.name.trim().toLowerCase() === qRaw &&
-      p.unit && p.unit.toLowerCase() === queryUnit.toLowerCase()
+      normalizeSpokenName(p.name) === normalizeSpokenName(queryName) &&
+      p.unit && p.unit.toLowerCase() === String(queryUnit).toLowerCase()
     );
     if (matchBoth) return matchBoth;
   }
 
-  // 1. Direct exact match
+  // 1. Direct exact full name match (case-insensitive)
   let found = state.products.find(p => p.name.trim().toLowerCase() === qRaw);
   if (found) return found;
 
-  // 2. Normalized match (punctuation stripped, spaces unified)
+  // 2. Normalized full name match (punctuation stripped, spaces unified)
   const qNorm = normalizeSpokenName(queryName);
   found = state.products.find(p => normalizeSpokenName(p.name) === qNorm);
   if (found) return found;
 
-  // 3. Spaceless compact match (e.g. 'rajma' vs 'rajma ')
+  // 3. Spaceless compact complete name match (requires entire name to match, e.g. 'tatasalt' vs 'tata salt')
   const qCompact = qNorm.replace(/\s+/g, '');
   found = state.products.find(p => normalizeSpokenName(p.name).replace(/\s+/g, '') === qCompact);
   if (found) return found;
 
-  // 4. Prefix or containment match
-  found = state.products.find(p => {
-    const pCompact = normalizeSpokenName(p.name).replace(/\s+/g, '');
-    return pCompact === qCompact || qCompact.startsWith(pCompact) || pCompact.startsWith(qCompact);
-  });
-  return found || null;
+  return null;
 }
 
 function cleanVoiceItemName(s) {
