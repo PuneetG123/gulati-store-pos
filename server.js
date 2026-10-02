@@ -392,7 +392,7 @@ app.post('/api/change-pin', authenticateToken, async (req, res) => {
 app.get('/api/data', authenticateToken, async (req, res) => {
   try {
     const settings = await dbAll("SELECT * FROM settings");
-    const rawProducts = await dbAll("SELECT * FROM products");
+    const rawProducts = await dbAll("SELECT * FROM products ORDER BY LOWER(name) ASC");
     const rawTransactions = await dbAll("SELECT * FROM transactions");
     const rawCustomers = await dbAll("SELECT * FROM customers");
     

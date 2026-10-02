@@ -136,14 +136,16 @@ async function syncFromServer() {
           localStorage.setItem("fc_customers", JSON.stringify(state.customers));
         } catch(e) {}
 
-        // Prevent background updates from resetting cursor focus or cart contents during active billing
-        const isUserBilling = state.cart.length > 0 || (
-          document.activeElement && [
-            'pos-customer-name',
-            'pos-customer-phone',
-            'pos-scanner-sim-input',
-            'pos-search-input'
-          ].includes(document.activeElement.id)
+        // Prevent background updates from resetting cursor focus or cart contents during active billing on POS
+        const isUserBilling = state.activePage === 'pos' && (
+          state.cart.length > 0 || (
+            document.activeElement && [
+              'pos-customer-name',
+              'pos-customer-phone',
+              'pos-scanner-sim-input',
+              'pos-search-input'
+            ].includes(document.activeElement.id)
+          )
         );
 
         if (!isUserBilling) {
@@ -391,7 +393,25 @@ function setupNavigation() {
       });
 
       state.activePage = targetPage;
+
+      if (targetPage === 'inventory') {
+        // Clear search inputs and reset filter dropdowns so complete catalog is always shown
+        invSearchQuery = "";
+        invFilterCategory = "all";
+        invFilterStock = "all";
+        const searchInput = document.getElementById("inv-search-input");
+        if (searchInput) searchInput.value = "";
+        const catSelect = document.getElementById("inv-filter-category");
+        if (catSelect) catSelect.value = "all";
+        const stockSelect = document.getElementById("inv-filter-stock");
+        if (stockSelect) stockSelect.value = "all";
+      }
+
       renderAll();
+
+      if (targetPage === 'inventory') {
+        refreshInventoryFromDatabase();
+      }
 
       // Auto focus scanner input when switching to POS
       if (targetPage === 'pos') {
@@ -1724,11 +1744,41 @@ function setupInventoryActions() {
   });
 }
 
+async function refreshInventoryFromDatabase() {
+  try {
+    const response = await fetch('/api/data', {
+      headers: getAuthHeaders()
+    });
+    if (response.ok) {
+      const serverData = await response.json();
+      if (serverData && Array.isArray(serverData.products)) {
+        state.products = serverData.products;
+        if (Array.isArray(serverData.transactions)) state.transactions = serverData.transactions;
+        if (Array.isArray(serverData.customers)) state.customers = serverData.customers;
+        if (Array.isArray(serverData.ledgerEntries)) state.ledgerEntries = serverData.ledgerEntries;
+
+        try {
+          localStorage.setItem("fc_products", JSON.stringify(state.products));
+          localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
+          localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+        } catch(e) {}
+
+        if (state.activePage === 'inventory') {
+          renderInventory();
+          renderInventoryCategoriesFilter();
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Could not refresh inventory from server database:", err);
+  }
+}
+
 function renderInventoryCategoriesFilter() {
   const select = document.getElementById("inv-filter-category");
   if (!select) return;
 
-  const currentValue = select.value;
+  const currentValue = invFilterCategory || "all";
   select.innerHTML = `<option value="all">All Categories</option>`;
   
   const categories = [...new Set(state.products.map(p => p.category))];
@@ -1747,6 +1797,7 @@ function renderInventory() {
   if (!tableBody) return;
   tableBody.innerHTML = "";
 
+  const totalCount = state.products ? state.products.length : 0;
   const filtered = state.products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(invSearchQuery.toLowerCase()) ||
                           p.sku.includes(invSearchQuery) ||
@@ -1762,6 +1813,15 @@ function renderInventory() {
 
     return matchesSearch && matchesCategory && matchesStock;
   });
+
+  const subTitle = document.getElementById("inv-subtitle");
+  if (subTitle) {
+    if (invSearchQuery || invFilterCategory !== "all" || invFilterStock !== "all") {
+      subTitle.innerText = `Showing ${filtered.length} of ${totalCount} items stored in database.`;
+    } else {
+      subTitle.innerText = `Manage and audit products. Showing all ${totalCount} items stored in database.`;
+    }
+  }
 
   if (filtered.length === 0) {
     tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:30px;">No inventory records match filters.</td></tr>`;
