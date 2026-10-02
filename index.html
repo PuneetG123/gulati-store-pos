@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=71">
+  <link rel="stylesheet" href="styles.css?v=72">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -364,6 +364,10 @@
             <button class="btn btn-primary" id="inv-add-product-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add Product
+            </button>
+            <button class="btn btn-secondary" id="inv-mic-btn" type="button" title="Add product to inventory via voice" style="display:flex; align-items:center; gap:6px; background:#8B5CF6; border-color:#7C3AED; color:#fff;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              Voice Add
             </button>
           </div>
         </div>
@@ -1218,11 +1222,53 @@
         </div>
       </div>
       <div>
-        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #fff;">Listening...</h3>
-        <p style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; line-height: 1.4;">Speak now, e.g. <br><strong style="color: #a78bfa;">"Rajma 1kg 140Rs"</strong></p>
+        <h3 id="voice-overlay-title" style="margin: 0; font-size: 18px; font-weight: 700; color: #fff;">Listening...</h3>
+        <p id="voice-overlay-hint" style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; line-height: 1.4;">Speak product name & quantity, e.g. <br><strong style="color: #a78bfa;">"Rajma 1kg"</strong></p>
       </div>
       <div id="voice-interim-text" style="font-size: 14px; font-style: italic; color: #e2e8f0; height: 20px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;">Say something...</div>
       <button id="pos-voice-close-btn" class="btn btn-secondary" type="button" style="margin-top: 8px; width: 100%;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Voice Price Prompt Modal (When new product spoken on Billing page) -->
+  <div id="pos-voice-price-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="modal-card" style="background: #1e1e2e; border: 1px solid #334155; border-radius: 12px; width: 90%; max-width: 380px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #334155;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">🎙️</span>
+          <h3 style="margin: 0; font-size: 16px; font-weight: 700; color:#fff;">Add to Inventory & Cart</h3>
+        </div>
+        <button type="button" class="close-btn" id="voice-price-modal-close" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:20px; line-height:1;">&times;</button>
+      </div>
+      <form id="pos-voice-price-form" style="padding: 20px;">
+        <p style="margin:0 0 14px 0; font-size:12px; color:#94a3b8;">This item is not in inventory yet. Enter the price to add it to inventory and your cart:</p>
+        <div style="margin-bottom: 14px;">
+          <label style="display:block; font-size:12px; font-weight:600; color:#cbd5e1; margin-bottom:4px;">Product Name</label>
+          <input type="text" id="voice-price-name" class="form-control" style="width:100%;" required>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <label style="display:block; font-size:12px; font-weight:600; color:#cbd5e1; margin-bottom:4px;">Selling Price (₹) *</label>
+            <input type="number" id="voice-price-input" class="form-control" step="0.01" min="0.01" placeholder="e.g. 140" style="width:100%; font-size:16px; font-weight:700;" required>
+          </div>
+          <div>
+            <label style="display:block; font-size:12px; font-weight:600; color:#cbd5e1; margin-bottom:4px;">Unit</label>
+            <select id="voice-price-unit" class="form-control" style="width:100%;">
+              <option value="pcs">Pieces (pcs)</option>
+              <option value="kg">Kilogram (kg)</option>
+              <option value="g">Gram (g)</option>
+              <option value="L">Litre (L)</option>
+              <option value="ml">Millilitre (ml)</option>
+              <option value="pack">Pack</option>
+            </select>
+          </div>
+        </div>
+        <div id="voice-price-error" style="display:none; color:#ef4444; font-size:12px; margin-bottom:12px; font-weight:600;"></div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-secondary" id="voice-price-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="voice-price-submit-btn" style="background:#8B5CF6; border-color:#7C3AED; color:#fff;">Save & Add to Cart</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1230,7 +1276,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=71"></script>
-  <script src="app.js?v=71"></script>
+  <script src="initial-data.js?v=72"></script>
+  <script src="app.js?v=72"></script>
 </body>
 </html>

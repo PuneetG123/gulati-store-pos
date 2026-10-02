@@ -1837,7 +1837,8 @@ tr:hover td {
   }
 }
 
-#pos-mic-btn.recording {
+#pos-mic-btn.recording,
+#inv-mic-btn.recording {
   background: #ef4444 !important;
   border-color: #ef4444 !important;
   color: #fff !important;

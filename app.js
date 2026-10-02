@@ -814,8 +814,8 @@ function setupPOSCartActions() {
       return;
     }
 
-    // 🛑 Duplicate Check: Case-insensitive name match
-    const exists = state.products.some(p => p.name.toLowerCase() === name.toLowerCase());
+    // 🛑 Duplicate Check: Case-insensitive trimmed name match
+    const exists = state.products.some(p => p.name.trim().toLowerCase() === name.toLowerCase());
     if (exists) {
       alert(`Validation Error: A product named "${name}" already exists in the inventory!`);
       return;
@@ -1824,13 +1824,11 @@ async function saveProductForm() {
     sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
   }
 
-  // Duplicate Check: Case-insensitive name match (only for new additions)
-  if (!editSku) {
-    const exists = state.products.some(p => p.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-      alert(`Validation Error: A product named "${name}" already exists in the inventory!`);
-      return;
-    }
+  // Duplicate Check: Case-insensitive name match
+  const duplicate = state.products.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  if (duplicate && (!editSku || duplicate.sku !== editSku)) {
+    alert(`Validation Error: A product named "${name}" already exists in the inventory!`);
+    return;
   }
 
   const prodObj = {
@@ -3083,6 +3081,9 @@ document.addEventListener("DOMContentLoaded", () => {
           
           // Cache the new PIN locally for offline access
           localStorage.setItem('fc_pin', newPin);
+          if (data && data.token) {
+            localStorage.setItem('fc_session_token', data.token);
+          }
           
           // Clear inputs
           document.getElementById("pin-current").value = "";
@@ -4199,20 +4200,27 @@ function parseFallbackPdfLines(sortedYKeys, rowsByY) {
 }
 
 // =======================================================
-// VOICE COMMAND BILLING SYSTEM
+// DUAL-MODE VOICE COMMAND SYSTEM (BILLING & INVENTORY)
 // =======================================================
+let currentVoiceMode = 'billing'; // 'billing' or 'inventory'
+let voicePriceAddToBilling = true;
+
 function setupVoiceBilling() {
-  const micBtn = document.getElementById("pos-mic-btn");
+  const posMicBtn = document.getElementById("pos-mic-btn");
+  const invMicBtn = document.getElementById("inv-mic-btn");
   const overlay = document.getElementById("pos-voice-overlay");
   const closeBtn = document.getElementById("pos-voice-close-btn");
   const interimText = document.getElementById("voice-interim-text");
+  const overlayTitle = document.getElementById("voice-overlay-title");
+  const overlayHint = document.getElementById("voice-overlay-hint");
 
-  if (!micBtn || !overlay || !closeBtn || !interimText) return;
+  if (!overlay || !closeBtn || !interimText) return;
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     console.warn("Web Speech API is not supported in this browser.");
-    micBtn.style.display = "none";
+    if (posMicBtn) posMicBtn.style.display = "none";
+    if (invMicBtn) invMicBtn.style.display = "none";
     return;
   }
 
@@ -4222,37 +4230,56 @@ function setupVoiceBilling() {
   recognition.lang = 'en-IN'; // Indian English / Hindi Accent optimization
 
   let isRecording = false;
+  let activeMicBtn = null;
 
-  const startRecording = () => {
+  const startRecording = (mode, btn) => {
     try {
-      recognition.start();
+      currentVoiceMode = mode;
+      activeMicBtn = btn;
       isRecording = true;
-      micBtn.classList.add("recording");
+
+      if (activeMicBtn) activeMicBtn.classList.add("recording");
+      if (overlayTitle) {
+        overlayTitle.innerText = mode === 'billing' ? "Listening for Cart Item..." : "Listening for New Product...";
+      }
+      if (overlayHint) {
+        overlayHint.innerHTML = mode === 'billing'
+          ? 'Speak product name & quantity, e.g. <br><strong style="color: #a78bfa;">"Rajma 1kg"</strong>'
+          : 'Speak Product, Qty & Price, e.g. <br><strong style="color: #a78bfa;">"Rajma 1kg 140"</strong>';
+      }
+
       overlay.style.display = "flex";
       interimText.innerText = "Listening...";
+      recognition.start();
     } catch (e) {
       console.error("Speech Recognition Error:", e);
     }
   };
 
   const stopRecording = () => {
-    recognition.stop();
+    try {
+      recognition.stop();
+    } catch(e) {}
     isRecording = false;
-    micBtn.classList.remove("recording");
+    if (activeMicBtn) activeMicBtn.classList.remove("recording");
     overlay.style.display = "none";
   };
 
-  micBtn.addEventListener("click", () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  });
+  if (posMicBtn) {
+    posMicBtn.addEventListener("click", () => {
+      if (isRecording) stopRecording();
+      else startRecording('billing', posMicBtn);
+    });
+  }
 
-  closeBtn.addEventListener("click", () => {
-    stopRecording();
-  });
+  if (invMicBtn) {
+    invMicBtn.addEventListener("click", () => {
+      if (isRecording) stopRecording();
+      else startRecording('inventory', invMicBtn);
+    });
+  }
+
+  closeBtn.addEventListener("click", stopRecording);
 
   recognition.onresult = (event) => {
     let interimTranscript = '';
@@ -4272,7 +4299,7 @@ function setupVoiceBilling() {
 
     if (finalTranscript) {
       stopRecording();
-      processVoiceBillingCommand(finalTranscript);
+      processVoiceBillingCommand(finalTranscript, currentVoiceMode);
     }
   };
 
@@ -4289,13 +4316,117 @@ function setupVoiceBilling() {
       stopRecording();
     }
   };
+
+  // Setup Price Prompt Modal Listeners
+  setupVoicePriceModalListeners();
 }
 
-async function processVoiceBillingCommand(rawText) {
-  let text = String(rawText).trim().toLowerCase();
-  console.log("[Voice Command]:", text);
+function setupVoicePriceModalListeners() {
+  const form = document.getElementById("pos-voice-price-form");
+  const closeBtn = document.getElementById("voice-price-modal-close");
+  const cancelBtn = document.getElementById("voice-price-cancel-btn");
 
-  // Normalize spoken digits & symbols (e.g. "one" -> "1", "kilo" -> "kg")
+  if (closeBtn) closeBtn.addEventListener("click", closeVoicePriceModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeVoicePriceModal);
+
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("voice-price-name").value.trim();
+      const price = parseFloat(document.getElementById("voice-price-input").value);
+      const unit = document.getElementById("voice-price-unit").value;
+      const errorDiv = document.getElementById("voice-price-error");
+      const submitBtn = document.getElementById("voice-price-submit-btn");
+
+      if (errorDiv) errorDiv.style.display = "none";
+
+      if (!name) {
+        if (errorDiv) {
+          errorDiv.innerText = "Please enter a product name.";
+          errorDiv.style.display = "block";
+        }
+        return;
+      }
+
+      if (isNaN(price) || price <= 0) {
+        if (errorDiv) {
+          errorDiv.innerText = "Please enter a valid price greater than 0.";
+          errorDiv.style.display = "block";
+        }
+        return;
+      }
+
+      // Strict duplicate check against state.products
+      const duplicate = state.products.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+      if (duplicate) {
+        if (errorDiv) {
+          errorDiv.innerText = `A product named "${duplicate.name}" already exists in the inventory!`;
+          errorDiv.style.display = "block";
+        }
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Saving...";
+      }
+
+      const success = await saveVoiceProduct(name, price, unit, voicePriceAddToBilling);
+      if (success) {
+        closeVoicePriceModal();
+      } else {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerText = voicePriceAddToBilling ? "Save & Add to Cart" : "Save to Inventory";
+        }
+      }
+    });
+  }
+}
+
+function openVoicePriceModal(name, unit, price = null, addToCartAfterSave = true) {
+  voicePriceAddToBilling = addToCartAfterSave;
+
+  const modal = document.getElementById("pos-voice-price-modal");
+  const nameInput = document.getElementById("voice-price-name");
+  const unitSelect = document.getElementById("voice-price-unit");
+  const priceInput = document.getElementById("voice-price-input");
+  const errorDiv = document.getElementById("voice-price-error");
+  const submitBtn = document.getElementById("voice-price-submit-btn");
+
+  if (!modal || !nameInput || !priceInput) return;
+
+  nameInput.value = name;
+  if (unitSelect) unitSelect.value = unit || "pcs";
+  priceInput.value = (price && price > 0) ? price : "";
+
+  if (errorDiv) {
+    errorDiv.style.display = "none";
+    errorDiv.innerText = "";
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.innerText = addToCartAfterSave ? "Save & Add to Cart" : "Save to Inventory";
+  }
+
+  modal.style.display = "flex";
+  setTimeout(() => {
+    priceInput.focus();
+    if (priceInput.value) priceInput.select();
+  }, 100);
+}
+
+function closeVoicePriceModal() {
+  const modal = document.getElementById("pos-voice-price-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function processVoiceBillingCommand(rawText, mode = 'billing') {
+  let text = String(rawText).trim().toLowerCase();
+  console.log(`[Voice Command (${mode})]:`, text);
+
+  // Normalize spoken digits & symbols
   text = text.replace(/\bzero\b/g, "0")
              .replace(/\bone\b/g, "1")
              .replace(/\btwo\b/g, "2")
@@ -4313,28 +4444,33 @@ async function processVoiceBillingCommand(rawText) {
              .replace(/\bgram\b|\bgrams\b/g, "g")
              .replace(/\bml\b|\bmilliliter\b|\bmilliliters\b|\bmillilitre\b|\bmillilitres\b/g, "ml");
 
-  // Regex parser to match product description and trailing price
+  // Check if trailing price was spoken: e.g. "140", "140rs", "140 rupees"
   const priceRegex = /(\d+(?:\.\d+)?)\s*(?:rs|rupees|rupee|inr)?$/i;
-  const match = text.match(priceRegex);
+  const priceMatch = text.match(priceRegex);
 
-  if (!match) {
-    showVoiceToast("Could not understand price. Speak e.g., 'Rajma 1kg 140 Rs'", true);
+  let detectedPrice = null;
+  let rawName = rawText.trim();
+
+  if (priceMatch) {
+    detectedPrice = parseFloat(priceMatch[1]);
+    const candName = rawText.substring(0, priceMatch.index).trim();
+    if (candName.length > 0) {
+      rawName = candName;
+    }
+  }
+
+  // Clean and capitalize product name
+  let name = rawName.trim().replace(/^add\s+/i, '').trim();
+  if (name.length > 0) {
+    name = name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  if (!name) {
+    showVoiceToast("Could not recognize product name. Please speak clearly.", true);
     return;
   }
 
-  const price = parseFloat(match[1]);
-  // Extract product name (everything before the price match)
-  let name = String(rawText).substring(0, match.index).trim();
-  
-  if (!name || isNaN(price) || price <= 0) {
-    showVoiceToast("Please speak product name and price.", true);
-    return;
-  }
-
-  // Capitalize first letter of product name for neat inventory view
-  name = name.charAt(0).toUpperCase() + name.slice(1);
-
-  // Auto-detect unit from product name
+  // Auto-detect unit
   let unit = "pcs";
   const nameLower = name.toLowerCase();
   if (/\b(kg|kilo|kilogram)\b/.test(nameLower)) unit = "kg";
@@ -4344,17 +4480,60 @@ async function processVoiceBillingCommand(rawText) {
   else if (/\b(pack|packet|pkt)\b/.test(nameLower)) unit = "pack";
 
   // Check if item already exists in catalog (case-insensitive name match)
-  const existingProduct = state.products.find(p => p.name.toLowerCase() === name.toLowerCase());
+  const existingProduct = state.products.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
 
-  if (existingProduct) {
-    // Add to cart directly
-    addToCart(existingProduct.sku);
-    renderAll();
-    showVoiceToast(`Added ${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
+  // =======================================================
+  // MODE 1: POS BILLING PAGE
+  // =======================================================
+  if (mode === 'billing') {
+    if (existingProduct) {
+      // Product exists! Directly add to cart without popup
+      addToCart(existingProduct.sku);
+      renderAll();
+      showVoiceToast(`Added ${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
+      return;
+    }
+
+    // Product DOES NOT exist in inventory! Prompt for price popup
+    openVoicePriceModal(name, unit, detectedPrice, true);
     return;
   }
 
-  // Product is new! Save to database & add to cart
+  // =======================================================
+  // MODE 2: INVENTORY PAGE
+  // =======================================================
+  if (mode === 'inventory') {
+    if (existingProduct) {
+      showVoiceToast(`"${existingProduct.name}" already exists in inventory!`, true);
+      return;
+    }
+
+    if (!detectedPrice || isNaN(detectedPrice) || detectedPrice <= 0) {
+      // Price was not spoken, open modal to let user enter it
+      openVoicePriceModal(name, unit, null, false);
+      return;
+    }
+
+    await saveVoiceProduct(name, detectedPrice, unit, false);
+  }
+}
+
+async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true) {
+  name = String(name).trim();
+  price = parseFloat(price);
+
+  if (!name || isNaN(price) || price <= 0) {
+    showVoiceToast("Please enter a valid product name and price.", true);
+    return false;
+  }
+
+  // Strict duplicate check against state.products
+  const exists = state.products.some(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  if (exists) {
+    showVoiceToast(`A product named "${name}" already exists in inventory!`, true);
+    return false;
+  }
+
   const sku = "LOCAL_" + Math.random().toString(36).substr(2, 8).toUpperCase();
   const hsn = suggestHsn(name);
 
@@ -4365,15 +4544,14 @@ async function processVoiceBillingCommand(rawText) {
     hsn,
     costPrice: Number((price * 0.8).toFixed(2)), // default ~20% margin
     sellingPrice: price,
-    gstSlab: 18, // default to 18% standard GST rate
+    gstSlab: 18, // default 18% standard GST rate
     stock: 100, // seed initial stock
     reorderLevel: 5,
-    unit: unit,
+    unit: unit || "pcs",
     discountPercent: 0
   };
 
-  // Show a mini-loader message
-  showVoiceToast(`Creating ${name}...`);
+  showVoiceToast(`Saving ${name}...`);
 
   try {
     const response = await fetch('/api/save-product', {
@@ -4384,9 +4562,15 @@ async function processVoiceBillingCommand(rawText) {
 
     if (response.ok) {
       await initData();
-      addToCart(sku);
-      renderAll();
-      showVoiceToast(`Saved & Added ${name} (₹${price})`);
+      if (addToCartAfterSave) {
+        addToCart(sku);
+        renderAll();
+        showVoiceToast(`Saved & Added ${name} (₹${price})`);
+      } else {
+        renderInventoryTable();
+        showVoiceToast(`Saved ${name} (₹${price}) to Inventory`);
+      }
+      return true;
     } else {
       let errMsg = "Error saving product to server database";
       try {
@@ -4394,10 +4578,12 @@ async function processVoiceBillingCommand(rawText) {
         if (data && data.error) errMsg = data.error;
       } catch (e) {}
       showVoiceToast(errMsg, true);
+      return false;
     }
   } catch (err) {
-    console.error("Voice Quick Add failed:", err);
+    console.error("Voice product save failed:", err);
     showVoiceToast("Network error. Failed to save product.", true);
+    return false;
   }
 }
 
@@ -4418,7 +4604,6 @@ function showVoiceToast(message, isError = false) {
 
   document.body.appendChild(toast);
 
-  // Auto remove after 3.5 seconds
   setTimeout(() => {
     if (toast && toast.parentElement) {
       toast.style.animation = "toastSlideIn 0.3s reverse";

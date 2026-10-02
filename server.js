@@ -379,8 +379,10 @@ app.post('/api/change-pin', authenticateToken, async (req, res) => {
     if (oldPin !== currentPin) return res.status(400).json({ error: "Current PIN is incorrect" });
 
     await dbRun("UPDATE settings SET value = ? WHERE key = 'pin'", [newPin]);
+    const token = generatePinToken(newPin);
+    activeTokens.add(token);
     console.log(`[SECURITY] PIN changed successfully to ${newPin}`);
-    res.json({ success: true });
+    res.json({ success: true, token });
   } catch (err) {
     handleDatabaseError(err, res, "Failed to update PIN");
   }
@@ -723,19 +725,28 @@ app.post('/api/add-transaction', authenticateToken, async (req, res) => {
 app.post('/api/save-product', authenticateToken, async (req, res) => {
   const p = req.body;
   if (!p || !p.sku) return res.status(400).json({ error: "Product SKU required" });
+  if (!p.name || !String(p.name).trim()) return res.status(400).json({ error: "Product name required" });
 
   try {
     const sku = String(p.sku);
+    const prodName = String(p.name).trim();
+
+    // Prevent duplicate product names (case-insensitive)
+    const duplicate = await dbGet("SELECT sku, name FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))", [prodName]);
+    if (duplicate && String(duplicate.sku) !== sku) {
+      return res.status(400).json({ error: `A product named "${prodName}" already exists in the inventory!` });
+    }
+
     let existing = await dbGet("SELECT * FROM products WHERE sku = ?", [sku]);
     if (!existing) {
       await dbRun(
         "INSERT INTO products (sku, name, category, hsn, \"costPrice\", \"sellingPrice\", \"gstSlab\", \"discountPercent\", stock, \"reorderLevel\", unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [sku, p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
+        [sku, prodName, p.category || 'General', p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs']
       );
     } else {
       await dbRun(
         "UPDATE products SET name=?, category=?, hsn=?, \"costPrice\"=?, \"sellingPrice\"=?, \"gstSlab\"=?, \"discountPercent\"=?, stock=?, \"reorderLevel\"=?, unit=? WHERE sku=?",
-        [p.name, p.category, p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs', sku]
+        [prodName, p.category || 'General', p.hsn || '', p.costPrice || p.purchasePrice || 0, p.sellingPrice || 0, p.gstSlab || p.gstRate || 0, p.discountPercent || 0, p.stock || 0, p.reorderLevel || 0, p.unit || 'pcs', sku]
       );
     }
     res.json({ success: true });
