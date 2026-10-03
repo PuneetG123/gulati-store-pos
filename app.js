@@ -134,6 +134,7 @@ async function syncFromServer() {
           localStorage.setItem("fc_products", JSON.stringify(state.products));
           localStorage.setItem("fc_transactions", JSON.stringify(state.transactions));
           localStorage.setItem("fc_customers", JSON.stringify(state.customers));
+          localStorage.setItem("fc_ledger", JSON.stringify(state.ledgerEntries));
         } catch(e) {}
 
         // Prevent background updates from resetting cursor focus or cart contents during active billing on POS
@@ -220,20 +221,11 @@ async function initData(isStartup = false) {
     if (!loadedState) {
       loadedState = {
         products: [...INITIAL_PRODUCTS],
-        transactions: [...INITIAL_TRANSACTIONS],
-        customers: [
-          { name: "Rahul Sharma", phone: "9876543210", totalPurchased: 396.00, balance: 0.00, lastTxn: getDateDaysAgo(6) },
-          { name: "Priya Patel", phone: "9911223344", totalPurchased: 706.20, balance: 706.20, lastTxn: getDateDaysAgo(5) },
-          { name: "Aman Verma", phone: "9812345678", totalPurchased: 519.70, balance: 0.00, lastTxn: getDateDaysAgo(4) },
-          { name: "Sanjay Gupta", phone: "9009009001", totalPurchased: 943.36, balance: 400.00, lastTxn: getDateDaysAgo(3) }
-        ],
-        ledgerEntries: [
-          { date: getDateDaysAgo(5) + "T14:30:22Z", phone: "9911223344", type: "debit", amount: 706.20, ref: "TXN-902149" },
-          { date: getDateDaysAgo(3) + "T11:20:00Z", phone: "9009009001", type: "debit", amount: 943.36, ref: "TXN-902151" },
-          { date: getDateDaysAgo(2) + "T12:00:00Z", phone: "9009009001", type: "credit", amount: 543.36, ref: "Cash" }
-        ]
+        transactions: [],
+        customers: [],
+        ledgerEntries: []
       };
-      console.log("Loaded default seeded grocery catalog.");
+      console.log("Loaded default grocery catalog.");
       if (shouldSeedServer) {
         syncToServer(loadedState);
       }
