@@ -37,9 +37,7 @@ function generatePinToken(pin) {
 }
 
 function verifyPinToken(token, currentPin) {
-  if (!token) return false;
-  if (activeTokens.has(token)) return true;
-  if (token === 'TOKEN_1234' || token === 'OFFLINE_TOKEN_1234') return true;
+  if (!token || !currentPin) return false;
   const expectedToken = generatePinToken(currentPin);
   return token === expectedToken;
 }
@@ -55,14 +53,10 @@ async function authenticateToken(req, res, next) {
   if (!token) {
     return res.status(401).json({ error: "Access denied. Invalid auth token format." });
   }
-
-  if (token === 'TOKEN_1234' || token === 'OFFLINE_TOKEN_1234' || activeTokens.has(token)) {
-    return next();
-  }
   
   try {
     const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
-    const currentPin = row ? row.value : "1234";
+    const currentPin = row ? String(row.value).trim() : "1234";
     if (verifyPinToken(token, currentPin)) {
       activeTokens.add(token);
       return next();
@@ -350,10 +344,10 @@ app.post('/api/login', async (req, res) => {
 
   try {
     const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
-    const currentPin = row ? row.value : "1234";
+    const currentPin = row ? String(row.value).trim() : "1234";
     const reqPin = String(pin).trim();
 
-    if (reqPin === String(currentPin).trim() || reqPin === "1234") {
+    if (reqPin === currentPin) {
       const token = generatePinToken(reqPin);
       activeTokens.add(token);
       res.json({ success: true, token });
@@ -374,11 +368,12 @@ app.post('/api/change-pin', authenticateToken, async (req, res) => {
 
   try {
     const row = await dbGet("SELECT value FROM settings WHERE key = 'pin'");
-    const currentPin = row ? row.value : "1234";
+    const currentPin = row ? String(row.value).trim() : "1234";
 
-    if (oldPin !== currentPin) return res.status(400).json({ error: "Current PIN is incorrect" });
+    if (String(oldPin).trim() !== currentPin) return res.status(400).json({ error: "Current PIN is incorrect" });
 
     await dbRun("UPDATE settings SET value = ? WHERE key = 'pin'", [newPin]);
+    activeTokens.clear();
     const token = generatePinToken(newPin);
     activeTokens.add(token);
     console.log(`[SECURITY] PIN changed successfully to ${newPin}`);
