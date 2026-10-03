@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=77">
+  <link rel="stylesheet" href="styles.css?v=78">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -185,7 +185,7 @@
       </nav>
       
       <div class="sidebar-footer">
-        <p>Build v77 &bull; GST Active</p>
+        <p>Build v78 &bull; GST Active</p>
         <button class="btn btn-secondary btn-sm" id="sidebar-change-pin-btn" onclick="openChangePinModal()" style="margin-top: 8px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Store Settings</span>
@@ -1193,9 +1193,32 @@
             <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Product Name *</label>
             <input type="text" id="quick-add-name" class="form-control" placeholder="e.g. Dabur Real Juice" required>
           </div>
-          <div class="form-group" style="margin-bottom:12px;">
-            <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Selling Price (₹, Incl. GST) *</label>
-            <input type="number" id="quick-add-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Selling Unit</label>
+              <select id="quick-add-unit" class="form-control">
+                <option value="pcs" selected>Pieces (pcs)</option>
+                <option value="kg">Kilogram (kg)</option>
+                <option value="g">Gram (g)</option>
+                <option value="L">Litre (L)</option>
+                <option value="ml">Millilitre (ml)</option>
+                <option value="pack">Pack</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Quantity *</label>
+              <input type="number" id="quick-add-qty" class="form-control" step="0.01" min="0.01" value="1" required>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div class="form-group">
+              <label class="form-label" id="quick-add-rate-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Rate (₹/pcs) *</label>
+              <input type="number" id="quick-add-price" class="form-control" step="0.01" min="0.01" placeholder="e.g. 70" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" id="quick-add-total-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Total Price (₹)</label>
+              <input type="number" id="quick-add-total-price" class="form-control" step="0.01" min="0.01" placeholder="e.g. 70">
+            </div>
           </div>
           <div class="form-group" style="margin-bottom:12px;">
             <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">GST Slab (India)</label>
@@ -1205,17 +1228,6 @@
               <option value="12">12% (Butter / Juices)</option>
               <option value="18" selected>18% (Biscuits / Detergents)</option>
               <option value="28">28% (Aerated Sodas / Chocolates)</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:12px;">
-            <label class="form-label" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">Selling Unit</label>
-            <select id="quick-add-unit" class="form-control">
-              <option value="pcs" selected>Pieces (pcs)</option>
-              <option value="kg">Kilogram (kg)</option>
-              <option value="g">Gram (g)</option>
-              <option value="L">Litre (L)</option>
-              <option value="ml">Millilitre (ml)</option>
-              <option value="pack">Pack</option>
             </select>
           </div>
         </div>
@@ -1277,9 +1289,15 @@
             <input type="number" id="voice-price-qty" class="form-control" step="0.01" min="0.01" value="1" style="width:100%;" required>
           </div>
         </div>
-        <div style="margin-bottom: 16px;">
-          <label style="display:block; font-size:12px; font-weight:600; color:#cbd5e1; margin-bottom:4px;">Selling Price (₹) *</label>
-          <input type="number" id="voice-price-input" class="form-control" step="0.01" min="0.01" placeholder="e.g. 140" style="width:100%; font-size:16px; font-weight:700;" required>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <label id="voice-price-rate-label" style="display:block; font-size:12px; font-weight:600; color:#cbd5e1; margin-bottom:4px;">Rate (₹/pcs) *</label>
+            <input type="number" id="voice-price-input" class="form-control" step="0.01" min="0.01" placeholder="e.g. 70" style="width:100%; font-size:15px; font-weight:700;" required>
+          </div>
+          <div>
+            <label id="voice-price-total-label" style="display:block; font-size:12px; font-weight:600; color:#cbd5e1; margin-bottom:4px;">Total Price (₹)</label>
+            <input type="number" id="voice-price-total-input" class="form-control" step="0.01" min="0.01" placeholder="e.g. 70" style="width:100%; font-size:15px; font-weight:700;">
+          </div>
         </div>
         <div id="voice-price-error" style="display:none; color:#ef4444; font-size:12px; margin-bottom:12px; font-weight:600;"></div>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
@@ -1294,7 +1312,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=77"></script>
-  <script src="app.js?v=77"></script>
+  <script src="initial-data.js?v=78"></script>
+  <script src="app.js?v=78"></script>
 </body>
 </html>

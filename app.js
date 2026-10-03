@@ -744,13 +744,76 @@ function suggestHsn(nameVal) {
   return "2106";
 }
 
+function setupPriceQuantitySync(unitSelectId, qtyInputId, rateInputId, totalInputId, rateLabelId, totalLabelId) {
+  const unitSelect = document.getElementById(unitSelectId);
+  const qtyInput = document.getElementById(qtyInputId);
+  const rateInput = document.getElementById(rateInputId);
+  const totalInput = document.getElementById(totalInputId);
+  const rateLabel = document.getElementById(rateLabelId);
+  const totalLabel = document.getElementById(totalLabelId);
+
+  function updateLabels() {
+    const unit = unitSelect ? unitSelect.value : 'pcs';
+    const qty = qtyInput ? (parseFloat(qtyInput.value) || 1) : 1;
+    if (rateLabel) rateLabel.innerText = `Rate (₹/${unit}) *`;
+    if (totalLabel) totalLabel.innerText = `Total for ${qty} ${unit} (₹)`;
+  }
+
+  function onRateChange() {
+    const rate = parseFloat(rateInput.value);
+    const qty = parseFloat(qtyInput ? qtyInput.value : 1) || 1;
+    if (!isNaN(rate) && rate >= 0) {
+      if (totalInput) totalInput.value = (rate * qty).toFixed(2);
+    } else {
+      if (totalInput) totalInput.value = '';
+    }
+  }
+
+  function onTotalChange() {
+    const total = parseFloat(totalInput.value);
+    const qty = parseFloat(qtyInput ? qtyInput.value : 1) || 1;
+    if (!isNaN(total) && total >= 0 && qty > 0) {
+      if (rateInput) rateInput.value = (total / qty).toFixed(2);
+    } else {
+      if (rateInput) rateInput.value = '';
+    }
+  }
+
+  function onQtyChange() {
+    updateLabels();
+    const rate = parseFloat(rateInput ? rateInput.value : '');
+    const qty = parseFloat(qtyInput.value) || 1;
+    if (!isNaN(rate) && rate > 0) {
+      if (totalInput) totalInput.value = (rate * qty).toFixed(2);
+    } else {
+      const total = parseFloat(totalInput ? totalInput.value : '');
+      if (!isNaN(total) && total > 0 && qty > 0) {
+        if (rateInput) rateInput.value = (total / qty).toFixed(2);
+      }
+    }
+  }
+
+  if (unitSelect) unitSelect.addEventListener('change', () => { updateLabels(); onQtyChange(); });
+  if (qtyInput) qtyInput.addEventListener('input', onQtyChange);
+  if (rateInput) rateInput.addEventListener('input', onRateChange);
+  if (totalInput) totalInput.addEventListener('input', onTotalChange);
+}
+
 window.openPosQuickAddModal = function(query) {
   const quickAddModal = document.getElementById("pos-quick-add-modal");
   if (!quickAddModal) return;
 
   document.getElementById("quick-add-name").value = query || "";
   document.getElementById("quick-add-price").value = "";
+  const totalInput = document.getElementById("quick-add-total-price");
+  if (totalInput) totalInput.value = "";
   
+  const qtyInput = document.getElementById("quick-add-qty");
+  if (qtyInput) qtyInput.value = "1";
+
+  const unitSelect = document.getElementById("quick-add-unit");
+  if (unitSelect) unitSelect.value = "pcs";
+
   // Auto-suggest GST slab based on product name
   const suggestedGst = suggestHsn(query) === "2501" || (suggestHsn(query) === "1905" && !query.toLowerCase().includes("biscuit")) ? "0" : 
                         ["0902", "0910", "1101", "1006", "1701"].includes(suggestHsn(query)) ? "5" :
@@ -758,10 +821,18 @@ window.openPosQuickAddModal = function(query) {
   
   document.getElementById("quick-add-gst").value = suggestedGst;
 
+  const rateLabel = document.getElementById("quick-add-rate-label");
+  const totalLabel = document.getElementById("quick-add-total-label");
+  if (rateLabel) rateLabel.innerText = "Rate (₹/pcs) *";
+  if (totalLabel) totalLabel.innerText = "Total for 1 pcs (₹)";
+
   quickAddModal.classList.add("active");
   
   setTimeout(() => {
-    document.getElementById("quick-add-price").focus();
+    if (qtyInput) {
+      qtyInput.focus();
+      qtyInput.select();
+    }
   }, 100);
 };
 
@@ -816,6 +887,16 @@ function setupPOSCartActions() {
   document.getElementById("pos-quick-add-modal-close-btn").addEventListener("click", closeQuickAdd);
   document.getElementById("pos-quick-add-modal-cancel-btn").addEventListener("click", closeQuickAdd);
   
+  // Attach two-way Price & Quantity sync
+  setupPriceQuantitySync(
+    "quick-add-unit",
+    "quick-add-qty",
+    "quick-add-price",
+    "quick-add-total-price",
+    "quick-add-rate-label",
+    "quick-add-total-label"
+  );
+
   // Quick Add Form submit handler
   document.getElementById("pos-quick-add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -828,9 +909,16 @@ function setupPOSCartActions() {
     const gst = parseInt(document.getElementById("quick-add-gst").value);
     const unitInput = document.getElementById("quick-add-unit");
     const unit = unitInput ? unitInput.value : "pcs";
+    const qtyInput = document.getElementById("quick-add-qty");
+    const quantity = qtyInput ? (parseFloat(qtyInput.value) || 1) : 1;
 
     if (!name || isNaN(price) || price <= 0) {
       alert("Please enter a valid Product Name and Price.");
+      return;
+    }
+
+    if (isNaN(quantity) || quantity <= 0) {
+      alert("Please enter a valid Quantity greater than 0.");
       return;
     }
 
@@ -887,8 +975,8 @@ function setupPOSCartActions() {
     // Refresh local cache and UI
     await initData();
     
-    // Add to cart
-    addToCart(sku);
+    // Add to cart with specified quantity!
+    addToCart(sku, quantity);
 
     // Clear search query & input
     document.getElementById("pos-search-input").value = "";
@@ -4390,6 +4478,16 @@ function setupVoicePriceModalListeners() {
   if (closeBtn) closeBtn.addEventListener("click", closeVoicePriceModal);
   if (cancelBtn) cancelBtn.addEventListener("click", closeVoicePriceModal);
 
+  // Attach two-way Price & Quantity sync
+  setupPriceQuantitySync(
+    "voice-price-unit",
+    "voice-price-qty",
+    "voice-price-input",
+    "voice-price-total-input",
+    "voice-price-rate-label",
+    "voice-price-total-label"
+  );
+
   if (form) {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -4410,9 +4508,17 @@ function setupVoicePriceModalListeners() {
         return;
       }
 
+      if (isNaN(quantity) || quantity <= 0) {
+        if (errorDiv) {
+          errorDiv.innerText = "Please enter a valid quantity greater than 0.";
+          errorDiv.style.display = "block";
+        }
+        return;
+      }
+
       if (isNaN(price) || price <= 0) {
         if (errorDiv) {
-          errorDiv.innerText = "Please enter a valid price greater than 0.";
+          errorDiv.innerText = "Please enter a valid price/rate greater than 0.";
           errorDiv.style.display = "block";
         }
         return;
@@ -4454,15 +4560,31 @@ function openVoicePriceModal(name, unit, quantity = 1, price = null, addToCartAf
   const unitSelect = document.getElementById("voice-price-unit");
   const qtyInput = document.getElementById("voice-price-qty");
   const priceInput = document.getElementById("voice-price-input");
+  const totalInput = document.getElementById("voice-price-total-input");
   const errorDiv = document.getElementById("voice-price-error");
   const submitBtn = document.getElementById("voice-price-submit-btn");
 
   if (!modal || !nameInput || !priceInput) return;
 
+  const resolvedUnit = unit || "pcs";
+  const resolvedQty = (quantity && quantity > 0) ? quantity : 1;
+
   nameInput.value = name;
-  if (unitSelect) unitSelect.value = unit || "pcs";
-  if (qtyInput) qtyInput.value = (quantity && quantity > 0) ? quantity : 1;
-  priceInput.value = (price && price > 0) ? price : "";
+  if (unitSelect) unitSelect.value = resolvedUnit;
+  if (qtyInput) qtyInput.value = resolvedQty;
+
+  const rateLabel = document.getElementById("voice-price-rate-label");
+  const totalLabel = document.getElementById("voice-price-total-label");
+  if (rateLabel) rateLabel.innerText = `Rate (₹/${resolvedUnit}) *`;
+  if (totalLabel) totalLabel.innerText = `Total for ${resolvedQty} ${resolvedUnit} (₹)`;
+
+  if (price && price > 0) {
+    priceInput.value = price;
+    if (totalInput) totalInput.value = (price * resolvedQty).toFixed(2);
+  } else {
+    priceInput.value = "";
+    if (totalInput) totalInput.value = "";
+  }
 
   if (errorDiv) {
     errorDiv.style.display = "none";
@@ -4476,8 +4598,14 @@ function openVoicePriceModal(name, unit, quantity = 1, price = null, addToCartAf
 
   modal.style.display = "flex";
   setTimeout(() => {
-    priceInput.focus();
-    if (priceInput.value) priceInput.select();
+    // If quantity was default 1 and price wasn't specified, focus on quantity first
+    if (!price && resolvedQty === 1 && qtyInput) {
+      qtyInput.focus();
+      qtyInput.select();
+    } else {
+      priceInput.focus();
+      if (priceInput.value) priceInput.select();
+    }
   }, 100);
 }
 
@@ -4736,7 +4864,7 @@ async function saveVoiceProduct(name, price, unit, addToCartAfterSave = true, qu
     if (addToCartAfterSave) {
       addToCart(sku, quantity);
       renderAll();
-      showVoiceToast(`Saved & Added ${quantity > 1 ? quantity + ' ' + unit + ' ' : ''}${name} (₹${price})`);
+      showVoiceToast(`Saved & Added ${quantity > 1 ? quantity + ' ' + unit + ' ' : ''}${name} (₹${(price * quantity).toFixed(2)}${quantity > 1 ? ' @ ₹' + price + '/' + unit : ''})`);
     } else {
       renderAll();
       showVoiceToast(`Saved ${name} (${unit}) (₹${price}) to Inventory`);
