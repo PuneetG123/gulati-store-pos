@@ -243,7 +243,13 @@ async function initData(isStartup = false) {
     state.products = loadedState.products || [];
     state.transactions = loadedState.transactions || [];
     state.customers = loadedState.customers || [];
-    state.ledgerEntries = loadedState.ledgerEntries || [];
+    state.ledgerEntries = (loadedState.ledgerEntries || []).map(entry => {
+      if (!entry.customerName && entry.phone) {
+        const found = state.customers.find(c => c.phone === entry.phone);
+        if (found) entry.customerName = found.name;
+      }
+      return entry;
+    });
 
     // Backup loaded state to local storage as browser cache backup (safe try-catch)
     try {
@@ -925,10 +931,28 @@ function setupPOSCartActions() {
   const phoneInput = document.getElementById("pos-customer-phone");
   const nameInput = document.getElementById("pos-customer-name");
 
+  const autofillByName = (nameVal) => {
+    const cleanName = (nameVal || "").trim().toLowerCase();
+    if (!cleanName) return;
+    const existing = state.customers.find(c => c.name.toLowerCase() === cleanName);
+    if (existing && existing.phone) {
+      phoneInput.value = existing.phone;
+      phoneInput.style.borderColor = "var(--primary)";
+      nameInput.style.borderColor = "var(--primary)";
+      setTimeout(() => {
+        phoneInput.style.borderColor = "var(--border-color)";
+        nameInput.style.borderColor = "var(--border-color)";
+      }, 1000);
+    }
+  };
+
+  nameInput.addEventListener("input", (e) => autofillByName(e.target.value));
+  nameInput.addEventListener("change", (e) => autofillByName(e.target.value));
+
   phoneInput.addEventListener("input", (e) => {
     const phone = e.target.value.trim();
     if (phone.length === 10) {
-      const existing = state.customers.find(c => c.phone === phone);
+      const existing = state.customers.find(c => c.phone && c.phone === phone);
       if (existing) {
         nameInput.value = existing.name;
         // visual success glow
@@ -942,20 +966,20 @@ function setupPOSCartActions() {
     }
   });
 
-  nameInput.addEventListener("change", (e) => {
-    const name = e.target.value.trim();
-    const existing = state.customers.find(c => c.name.toLowerCase() === name.toLowerCase());
-    if (existing) {
-      phoneInput.value = existing.phone;
-      // visual success glow
-      phoneInput.style.borderColor = "var(--primary)";
-      nameInput.style.borderColor = "var(--primary)";
-      setTimeout(() => {
-        phoneInput.style.borderColor = "var(--border-color)";
-        nameInput.style.borderColor = "var(--border-color)";
-      }, 1000);
-    }
-  });
+  // Direct "+ Customer" button on POS billing page
+  const posAddCustBtn = document.getElementById("pos-add-customer-btn");
+  if (posAddCustBtn) {
+    posAddCustBtn.addEventListener("click", () => {
+      const addModal = document.getElementById("add-customer-modal");
+      const form = document.getElementById("add-customer-form");
+      if (form) form.reset();
+      const currentName = nameInput.value.trim();
+      const currentPhone = phoneInput.value.trim();
+      if (currentName) document.getElementById("cust-new-name").value = currentName;
+      if (currentPhone) document.getElementById("cust-new-phone").value = currentPhone;
+      if (addModal) addModal.classList.add("active");
+    });
+  }
 
   // Close POS Quick Add Modal listeners
   const quickAddModal = document.getElementById("pos-quick-add-modal");
@@ -1386,14 +1410,18 @@ async function checkoutCart() {
   const customerName = nameInput.value.trim();
   const customerPhone = phoneInput.value.trim();
 
-  // Validate phone if credit or provided
+  // Validate customer for credit or validate phone format if phone is provided
   if (payMethod === 'Credit') {
-    if (!customerName || !customerPhone || !/^\d{10}$/.test(customerPhone)) {
-      alert("Customer Name and a valid 10-digit Indian Phone Number are required for Credit/Khata transactions.");
+    if (!customerName) {
+      alert("Customer Name is required for Credit / Khata transactions.");
+      return;
+    }
+    if (customerPhone && !/^\d{10}$/.test(customerPhone)) {
+      alert("If entered, mobile number must be 10 digits.");
       return;
     }
   } else if (customerPhone && !/^\d{10}$/.test(customerPhone)) {
-    alert("Please enter a valid 10-digit Indian Mobile Number.");
+    alert("If entered, mobile number must be 10 digits.");
     return;
   }
 
@@ -1488,16 +1516,20 @@ async function checkoutCart() {
   state.transactions.push(transaction);
   saveTransactionsToStorage();
 
-  if (customerPhone && String(customerPhone).trim().length >= 10) {
-    const phoneStr = String(customerPhone).trim();
-    const nameStr = (customerName || "Customer " + phoneStr).trim();
-    let cust = state.customers.find(c => c.phone === phoneStr);
+  // Customer identified with Name only. If customerName is provided and not Walk-in Customer:
+  if (customerName && customerName.toLowerCase() !== "walk-in customer") {
+    const nameStr = customerName.trim();
+    const phoneStr = customerPhone ? String(customerPhone).trim() : "";
+    let cust = state.customers.find(c => c.name.toLowerCase() === nameStr.toLowerCase());
+    if (!cust && phoneStr) {
+      cust = state.customers.find(c => c.phone && c.phone === phoneStr);
+    }
     const addedBalance = (payMethod === 'Credit') ? payableTotal : 0;
     
     if (!cust) {
       cust = {
-        phone: phoneStr,
         name: nameStr,
+        phone: phoneStr,
         totalPurchased: payableTotal,
         balance: addedBalance,
         lastTxn: new Date().toISOString().split('T')[0]
@@ -1506,6 +1538,9 @@ async function checkoutCart() {
     } else {
       cust.totalPurchased += payableTotal;
       cust.balance += addedBalance;
+      if (phoneStr && !cust.phone) {
+        cust.phone = phoneStr;
+      }
       cust.lastTxn = new Date().toISOString().split('T')[0];
     }
     saveCustomersToStorage();
@@ -1513,7 +1548,8 @@ async function checkoutCart() {
     if (payMethod === 'Credit') {
       state.ledgerEntries.push({
         id: `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`,
-        phone: phoneStr,
+        customerName: cust.name,
+        phone: cust.phone || phoneStr || "",
         date: transaction.date,
         type: 'debit',
         amount: payableTotal,
@@ -1521,6 +1557,7 @@ async function checkoutCart() {
       });
       saveLedgerToStorage();
     }
+    updatePOSCustomerDatalists();
   }
 
   // Build receipt html template and show modal immediately
@@ -2420,10 +2457,10 @@ function renderLedger() {
   document.getElementById("stat-total-dues").innerText = formatRupee(totalOutstanding);
   document.getElementById("stat-active-debtors").innerText = activeDebtors;
 
-  // Filter list
+  // Filter list (search by customer name or phone)
   const filtered = state.customers.filter(c => {
     return c.name.toLowerCase().includes(ledgerSearchQuery.toLowerCase()) ||
-           c.phone.includes(ledgerSearchQuery);
+           (c.phone && c.phone.includes(ledgerSearchQuery));
   });
 
   if (filtered.length === 0) {
@@ -2438,15 +2475,15 @@ function renderLedger() {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><strong>${cust.name}</strong></td>
-        <td><span class="sku-text">${cust.phone}</span></td>
+        <td><span class="sku-text">${cust.phone ? cust.phone : '-'}</span></td>
         <td>${formatRupee(cust.totalPurchased)}</td>
         <td style="font-weight:700; color:${cust.balance > 0 ? 'var(--danger)' : 'var(--success)'};">${formatRupee(cust.balance)}</td>
         <td>${cust.lastTxn ? cust.lastTxn : '-'}</td>
         <td>
           <div class="action-buttons">
-            <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="viewLedgerStatement('${cust.phone}')">Statement</button>
-            <button class="btn btn-primary" style="padding:4px 10px; font-size:12px; background-color:var(--success); border-color:var(--success);" onclick="openPayDuesModal('${cust.phone}')">Record Payment</button>
-            <button class="btn btn-primary" style="padding:4px 10px; font-size:12px; background-color:var(--danger); border-color:var(--danger);" onclick="openAdjustDuesModal('${cust.phone}')">Adjust Dues</button>
+            <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="viewLedgerStatement('${encodeURIComponent(cust.name)}')">Statement</button>
+            <button class="btn btn-primary" style="padding:4px 10px; font-size:12px; background-color:var(--success); border-color:var(--success);" onclick="openPayDuesModal('${encodeURIComponent(cust.name)}')">Record Payment</button>
+            <button class="btn btn-primary" style="padding:4px 10px; font-size:12px; background-color:var(--danger); border-color:var(--danger);" onclick="openAdjustDuesModal('${encodeURIComponent(cust.name)}')">Adjust Dues</button>
           </div>
         </td>
       `;
@@ -2461,15 +2498,15 @@ document.getElementById("ledger-search-input").addEventListener("input", (e) => 
 });
 
 // Ledger Statement modal functions
-// Ledger Statement modal functions
-window.viewLedgerStatement = function(phone) {
-  const cust = state.customers.find(c => c.phone === phone);
+window.viewLedgerStatement = function(identifier) {
+  const decoded = decodeURIComponent(identifier);
+  const cust = state.customers.find(c => c.name.toLowerCase() === decoded.toLowerCase()) || state.customers.find(c => c.phone && c.phone === decoded);
   if (!cust) return;
 
-  state.activeStatementPhone = phone;
+  state.activeStatementCustomer = cust.name;
 
   document.getElementById("statement-title").innerText = `${cust.name} - Ledger Statement`;
-  document.getElementById("statement-subtitle").innerText = `Phone: ${cust.phone} | Outstanding Dues: ${formatRupee(cust.balance)}`;
+  document.getElementById("statement-subtitle").innerText = `${cust.phone ? 'Phone: ' + cust.phone + ' | ' : ''}Outstanding Dues: ${formatRupee(cust.balance)}`;
 
   // Reset filters to default
   const periodSelector = document.getElementById("statement-period");
@@ -2483,8 +2520,9 @@ window.viewLedgerStatement = function(phone) {
 };
 
 function filterAndRenderStatement() {
-  const phone = state.activeStatementPhone;
-  const cust = state.customers.find(c => c.phone === phone);
+  const custName = state.activeStatementCustomer;
+  if (!custName) return;
+  const cust = state.customers.find(c => c.name.toLowerCase() === custName.toLowerCase());
   if (!cust) return;
 
   const period = document.getElementById("statement-period").value;
@@ -2516,9 +2554,11 @@ function filterAndRenderStatement() {
     if (endVal) end = new Date(endVal + "T23:59:59");
   }
 
-  // Get and sort all customer entries
-  const allCustEntries = state.ledgerEntries.filter(e => e.phone === phone)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Get and sort all customer entries (matching by name or legacy phone)
+  const allCustEntries = state.ledgerEntries.filter(e => 
+    (e.customerName && e.customerName.toLowerCase() === cust.name.toLowerCase()) ||
+    (cust.phone && e.phone && e.phone === cust.phone)
+  ).sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const renderedEntries = [];
   let broughtForwardBalance = 0;
@@ -2659,7 +2699,7 @@ function filterAndRenderStatement() {
         <div class="receipt-store-title">GULATI STORE</div>
         <div style="font-size:11px; color:#4B5563;">${periodText}</div>
         <div style="font-size:12px; font-weight:700; margin-top:6px;">${cust.name.toUpperCase()}</div>
-        <div style="font-size:11px; color:#4B5563;">Mobile: ${cust.phone}</div>
+        <div style="font-size:11px; color:#4B5563;">Mobile: ${cust.phone ? cust.phone : '-'}</div>
       </div>
       <table class="receipt-table" style="font-size:11px;">
         <thead>
@@ -2740,7 +2780,7 @@ function filterAndRenderStatement() {
     doc.text(`Customer: ${cust.name.toUpperCase()}`, 14, 45);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(75, 85, 99);
-    doc.text(`Mobile: ${cust.phone}`, 14, 51);
+    doc.text(`Mobile: ${cust.phone ? cust.phone : 'Not provided'}`, 14, 51);
     doc.text(`Date Generated: ${new Date().toLocaleDateString('en-IN')}`, 14, 57);
     
     // Table Headers
@@ -2854,11 +2894,12 @@ document.getElementById("statement-modal-close-btn-bottom").addEventListener("cl
 });
 
 // Record Payments modal functions
-window.openPayDuesModal = function(phone) {
-  const cust = state.customers.find(c => c.phone === phone);
+window.openPayDuesModal = function(identifier) {
+  const decoded = decodeURIComponent(identifier);
+  const cust = state.customers.find(c => c.name.toLowerCase() === decoded.toLowerCase()) || state.customers.find(c => c.phone && c.phone === decoded);
   if (!cust) return;
 
-  document.getElementById("payment-cust-phone").value = cust.phone;
+  document.getElementById("payment-cust-phone").value = cust.phone || "";
   document.getElementById("payment-cust-name").value = cust.name;
   document.getElementById("payment-current-balance").value = formatRupee(cust.balance);
   document.getElementById("payment-amount").value = "";
@@ -2878,7 +2919,8 @@ document.getElementById("payment-modal-cancel-btn").addEventListener("click", ()
 document.getElementById("ledger-payment-form").addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const phone = document.getElementById("payment-cust-phone").value;
+  const custName = document.getElementById("payment-cust-name").value.trim();
+  const phone = document.getElementById("payment-cust-phone").value.trim();
   const amountPaid = parseFloat(document.getElementById("payment-amount").value);
   const method = document.getElementById("payment-method").value;
 
@@ -2892,6 +2934,7 @@ document.getElementById("ledger-payment-form").addEventListener("submit", async 
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({
+        name: custName,
         phone: String(phone),
         amountPaid: amountPaid,
         paymentMethod: method
@@ -2921,9 +2964,12 @@ function updatePOSCustomerDatalists() {
     nameOpt.value = cust.name;
     namesList.appendChild(nameOpt);
 
-    const phoneOpt = document.createElement("option");
-    phoneOpt.value = cust.phone;
-    phonesList.appendChild(phoneOpt);
+    if (cust.phone) {
+      const phoneOpt = document.createElement("option");
+      phoneOpt.value = cust.phone;
+      phoneOpt.label = cust.name;
+      phonesList.appendChild(phoneOpt);
+    }
   });
 }
 
@@ -2956,22 +3002,27 @@ function setupCustomerLedgerActions() {
       const phone = document.getElementById("cust-new-phone").value.trim();
       const dues = parseFloat(document.getElementById("cust-new-dues").value) || 0;
 
-      if (!name || !phone || !/^\d{10}$/.test(phone)) {
-        alert("Please enter a valid Customer Name and 10-digit Indian Mobile Number.");
+      if (!name) {
+        alert("Please enter Customer Name.");
         return;
       }
 
-      // Check duplication
-      const existing = state.customers.find(c => c.phone === phone);
+      if (phone && !/^\d{10}$/.test(phone)) {
+        alert("If entered, mobile number must be 10 digits.");
+        return;
+      }
+
+      // Check duplication by Name (case-insensitive)
+      const existing = state.customers.find(c => c.name.toLowerCase() === name.toLowerCase());
       if (existing) {
-        alert(`A customer account with phone number ${phone} already exists (Name: ${existing.name}).`);
+        alert(`A customer account with name "${existing.name}" already exists.`);
         return;
       }
 
       // Create new customer
       const newCust = {
         name: name,
-        phone: phone,
+        phone: phone || "",
         totalPurchased: dues > 0 ? dues : 0,
         balance: dues,
         lastTxn: dues !== 0 ? new Date().toISOString().split('T')[0] : ""
@@ -2984,8 +3035,9 @@ function setupCustomerLedgerActions() {
       if (dues !== 0) {
         state.ledgerEntries.push({
           id: `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`,
+          customerName: name,
+          phone: phone || "",
           date: new Date().toISOString(),
-          phone: phone,
           type: dues > 0 ? "debit" : "credit",
           amount: Math.abs(dues),
           ref: "Opening Balance"
@@ -2996,6 +3048,12 @@ function setupCustomerLedgerActions() {
       addModal.classList.remove("active");
       renderLedger();
       updatePOSCustomerDatalists(); // keep POS dropdowns updated
+
+      // If POS billing customer inputs are on the page, fill them
+      const posNameInput = document.getElementById("pos-customer-name");
+      const posPhoneInput = document.getElementById("pos-customer-phone");
+      if (posNameInput) posNameInput.value = name;
+      if (posPhoneInput && phone) posPhoneInput.value = phone;
 
       // Sync customer to server atomically in the background
       (async () => {
@@ -3043,6 +3101,7 @@ function setupCustomerLedgerActions() {
 
       try {
         const phone = document.getElementById("adjust-cust-phone").value;
+        const name = document.getElementById("adjust-cust-name").value;
         const addedDuesVal = document.getElementById("adjust-new-dues").value;
         const addedDues = parseFloat(addedDuesVal);
         const reason = document.getElementById("adjust-reason").value.trim() || "Balance Adjustment";
@@ -3060,9 +3119,9 @@ function setupCustomerLedgerActions() {
           return;
         }
 
-        const cust = state.customers.find(c => String(c.phone).trim() === String(phone).trim());
+        const cust = state.customers.find(c => c.name.toLowerCase() === name.toLowerCase()) || state.customers.find(c => c.phone && String(c.phone).trim() === String(phone).trim());
         if (!cust) {
-          alert("Customer account could not be found for phone: " + phone);
+          alert("Customer account could not be found for: " + name);
           return;
         }
 
@@ -3072,7 +3131,8 @@ function setupCustomerLedgerActions() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
               body: JSON.stringify({
-                phone: String(phone),
+                name: cust.name,
+                phone: cust.phone || String(phone),
                 addedDues: addedDues,
                 reason: reason,
                 attachmentData: attachmentData,
@@ -3146,11 +3206,12 @@ function setupCustomerLedgerActions() {
   }
 }
 
-window.openAdjustDuesModal = function(phone) {
-  const cust = state.customers.find(c => c.phone === phone);
+window.openAdjustDuesModal = function(identifier) {
+  const decoded = decodeURIComponent(identifier);
+  const cust = state.customers.find(c => c.name.toLowerCase() === decoded.toLowerCase()) || state.customers.find(c => c.phone && c.phone === decoded);
   if (!cust) return;
 
-  document.getElementById("adjust-cust-phone").value = cust.phone;
+  document.getElementById("adjust-cust-phone").value = cust.phone || "";
   document.getElementById("adjust-cust-name").value = cust.name;
   document.getElementById("adjust-current-dues").value = formatRupee(cust.balance);
   document.getElementById("adjust-new-dues").value = "";

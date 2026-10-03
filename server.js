@@ -202,8 +202,8 @@ function createSqliteTables() {
     )`);
 
     sqliteDb.run(`CREATE TABLE IF NOT EXISTS customers (
-      phone TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
+      name TEXT PRIMARY KEY,
+      phone TEXT,
       totalPurchased REAL,
       balance REAL,
       lastTxn TEXT
@@ -213,6 +213,7 @@ function createSqliteTables() {
       id TEXT PRIMARY KEY,
       date TEXT,
       phone TEXT,
+      customer_name TEXT,
       type TEXT,
       amount REAL,
       ref TEXT,
@@ -221,6 +222,7 @@ function createSqliteTables() {
     )`);
 
     // Dynamic schema migrations for existing databases
+    sqliteDb.run("ALTER TABLE customer_ledger ADD COLUMN customer_name TEXT", [], () => {});
     sqliteDb.run("ALTER TABLE customer_ledger ADD COLUMN attachmentData TEXT", [], () => {});
     sqliteDb.run("ALTER TABLE customer_ledger ADD COLUMN attachmentName TEXT", [], () => {});
 
@@ -271,8 +273,8 @@ async function createPostgresTables() {
       );
 
       CREATE TABLE IF NOT EXISTS customers (
-        phone TEXT PRIMARY KEY,
-        name TEXT,
+        name TEXT PRIMARY KEY,
+        phone TEXT,
         "totalPurchased" REAL,
         balance REAL,
         "lastTxn" TEXT
@@ -281,6 +283,7 @@ async function createPostgresTables() {
       CREATE TABLE IF NOT EXISTS customer_ledger (
         id TEXT PRIMARY KEY,
         phone TEXT,
+        customer_name TEXT,
         date TEXT,
         type TEXT,
         amount REAL,
@@ -304,6 +307,10 @@ async function createPostgresTables() {
     `);
     
     // Dynamic Postgres schema migration
+    try { await pgPool.query('ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_pkey'); } catch(e) {}
+    try { await pgPool.query('ALTER TABLE customers ALTER COLUMN phone DROP NOT NULL'); } catch(e) {}
+    try { await pgPool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_name_lower ON customers (LOWER(TRIM(name)))'); } catch(e) {}
+    try { await pgPool.query('ALTER TABLE customer_ledger ADD COLUMN IF NOT EXISTS customer_name TEXT'); } catch(e) {}
     try { await pgPool.query('ALTER TABLE customer_ledger ADD COLUMN "attachmentData" TEXT'); } catch(e) {}
     try { await pgPool.query('ALTER TABLE customer_ledger ADD COLUMN "attachmentName" TEXT'); } catch(e) {}
 
@@ -315,21 +322,6 @@ async function createPostgresTables() {
   } catch (err) {
     console.error("Failed to initialize PostgreSQL tables:", err);
   }
-}
-
-// Authentication Middleware
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: "Access denied. Auth token missing." });
-  }
-  
-  const token = authHeader.split(' ')[1];
-  if (!activeTokens.has(token)) {
-    return res.status(401).json({ error: "Session expired or invalid. Please re-authenticate." });
-  }
-  
-  next();
 }
 
 function handleDatabaseError(err, res, message = "Database operation failed") {
@@ -424,7 +416,19 @@ app.get('/api/data', authenticateToken, async (req, res) => {
       balance: parseFloat(c.balance ?? 0)
     }));
 
-    res.json({ products, transactions, customers, ledgerEntries, settings });
+    const normalizedLedgerEntries = ledgerEntries.map(l => ({
+      id: l.id,
+      phone: l.phone || "",
+      customerName: l.customer_name || l.customerName || (rawCustomers.find(c => c.phone && c.phone === l.phone) || {}).name || "",
+      date: l.date,
+      type: l.type,
+      amount: parseFloat(l.amount) || 0,
+      ref: l.ref || "",
+      attachmentData: l.attachmentData || l.attachmentdata || null,
+      attachmentName: l.attachmentName || l.attachmentname || null
+    }));
+
+    res.json({ products, transactions, customers, ledgerEntries: normalizedLedgerEntries, settings });
   } catch (err) {
     handleDatabaseError(err, res, "Failed to load database payload");
   }
@@ -485,9 +489,10 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     if (Array.isArray(customers) && customers.length > 0) {
       await runQuery("DELETE FROM customers");
       for (const c of customers) {
+        if (!c.name) continue;
         await runQuery(
-          "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
-          [c.phone, c.name, c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
+          "INSERT INTO customers (name, phone, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+          [c.name.trim(), c.phone ? String(c.phone).trim() : '', c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
         );
       }
     }
@@ -498,8 +503,8 @@ app.post('/api/save', authenticateToken, async (req, res) => {
         await runQuery("DELETE FROM customer_ledger");
         for (const l of ledgerEntries) {
           await runQuery(
-            "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone, l.date, l.type, l.amount, l.ref, l.attachmentData || null, l.attachmentName || null]
+            "INSERT INTO customer_ledger (id, phone, customer_name, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [l.id || `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`, l.phone || '', l.customerName || l.customer_name || '', l.date, l.type, l.amount, l.ref, l.attachmentData || null, l.attachmentName || null]
           );
         }
       } catch (e) {
@@ -507,7 +512,7 @@ app.post('/api/save', authenticateToken, async (req, res) => {
         for (const l of ledgerEntries) {
           await runQuery(
             "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
-            [l.date, l.phone, l.type, l.amount, l.ref]
+            [l.date, l.phone || '', l.type, l.amount, l.ref]
           );
         }
       }
@@ -541,26 +546,30 @@ app.post('/api/save', authenticateToken, async (req, res) => {
 
 app.post('/api/add-customer', authenticateToken, async (req, res) => {
   const { name, phone, balance } = req.body;
-  if (!name || !phone || !/^\d{10}$/.test(phone)) {
-    return res.status(400).json({ error: "Customer name and valid 10-digit phone number are required" });
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ error: "Customer Name is required" });
   }
 
   try {
-    const phoneStr = String(phone).trim();
     const nameStr = String(name).trim();
+    const phoneStr = phone ? String(phone).trim() : "";
+    if (phoneStr && !/^\d{10}$/.test(phoneStr)) {
+      return res.status(400).json({ error: "If provided, mobile number must be 10 digits" });
+    }
+
     const initialBalance = parseFloat(balance) || 0;
     const today = new Date().toISOString().split('T')[0];
 
-    // Check if customer already exists
-    const existing = await dbGet("SELECT * FROM customers WHERE phone = ?", [phoneStr]);
+    // Check if customer already exists by name (case-insensitive)
+    const existing = await dbGet("SELECT * FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)", [nameStr]);
     if (existing) {
-      return res.status(400).json({ error: `Customer with phone number ${phoneStr} already exists.` });
+      return res.status(400).json({ error: `Customer with name "${nameStr}" already exists.` });
     }
 
     // Insert customer
     await dbRun(
-      "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
-      [phoneStr, nameStr, initialBalance > 0 ? initialBalance : 0, initialBalance, initialBalance !== 0 ? today : '']
+      "INSERT INTO customers (name, phone, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+      [nameStr, phoneStr, initialBalance > 0 ? initialBalance : 0, initialBalance, initialBalance !== 0 ? today : '']
     );
 
     // If opening balance dues !== 0, log an opening balance entry
@@ -568,14 +577,13 @@ app.post('/api/add-customer', authenticateToken, async (req, res) => {
       const ledgerId = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
       try {
         await dbRun(
-          "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, ?, ?, ?)",
-          [ledgerId, phoneStr, new Date().toISOString(), initialBalance > 0 ? 'debit' : 'credit', Math.abs(initialBalance), "Opening Balance"]
+          "INSERT INTO customer_ledger (id, phone, customer_name, date, type, amount, ref) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [ledgerId, phoneStr, nameStr, new Date().toISOString(), initialBalance > 0 ? 'debit' : 'credit', Math.abs(initialBalance), "Opening Balance"]
         );
       } catch (e) {
-        // Fallback for older ledger schema
         await dbRun(
-          "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
-          [new Date().toISOString(), phoneStr, initialBalance > 0 ? 'debit' : 'credit', Math.abs(initialBalance), "Opening Balance"]
+          "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, ?, ?, ?)",
+          [ledgerId, phoneStr, new Date().toISOString(), initialBalance > 0 ? 'debit' : 'credit', Math.abs(initialBalance), "Opening Balance"]
         );
       }
     }
@@ -588,36 +596,46 @@ app.post('/api/add-customer', authenticateToken, async (req, res) => {
 
 // Atomic Multi-Device Sync Routes
 app.post('/api/adjust-dues', authenticateToken, async (req, res) => {
-  const { phone, addedDues, reason, attachmentData, attachmentName } = req.body;
-  if (!phone || isNaN(addedDues)) return res.status(400).json({ error: "Invalid parameters" });
+  const { name, phone, addedDues, reason, attachmentData, attachmentName } = req.body;
+  const custName = (name || "").trim();
+  const custPhone = (phone || "").trim();
+  if ((!custName && !custPhone) || isNaN(addedDues)) return res.status(400).json({ error: "Invalid parameters" });
 
   try {
     const today = new Date().toISOString().split('T')[0];
-    const phoneStr = String(phone).trim();
+    let cust = null;
+    if (custName) {
+      cust = await dbGet("SELECT * FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)", [custName]);
+    }
+    if (!cust && custPhone) {
+      cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [custPhone]);
+    }
 
-    let cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [phoneStr]);
+    const resolvedName = cust ? cust.name : (custName || "Customer " + custPhone);
+    const resolvedPhone = cust ? (cust.phone || custPhone) : custPhone;
+
     if (!cust) {
       await dbRun(
-        "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, 0, ?, ?)",
-        [phoneStr, "Customer " + phoneStr, addedDues, today]
+        "INSERT INTO customers (name, phone, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, 0, ?, ?)",
+        [resolvedName, resolvedPhone, addedDues, today]
       );
     } else {
       await dbRun(
-        "UPDATE customers SET balance = balance + ?, \"lastTxn\" = ? WHERE phone = ?",
-        [addedDues, today, phoneStr]
+        "UPDATE customers SET balance = balance + ?, \"lastTxn\" = ? WHERE LOWER(TRIM(name)) = LOWER(?)",
+        [addedDues, today, resolvedName]
       );
     }
 
     const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
     try {
       await dbRun(
-        "INSERT INTO customer_ledger (id, phone, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, phoneStr, new Date().toISOString(), addedDues > 0 ? "debit" : "credit", Math.abs(addedDues), reason || 'Balance Adjustment', attachmentData || null, attachmentName || null]
+        "INSERT INTO customer_ledger (id, phone, customer_name, date, type, amount, ref, \"attachmentData\", \"attachmentName\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [id, resolvedPhone, resolvedName, new Date().toISOString(), addedDues > 0 ? "debit" : "credit", Math.abs(addedDues), reason || 'Balance Adjustment', attachmentData || null, attachmentName || null]
       );
     } catch(e) {
       await dbRun(
-        "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, ?, ?, ?)",
-        [new Date().toISOString(), phoneStr, addedDues > 0 ? "debit" : "credit", Math.abs(addedDues), reason || 'Balance Adjustment']
+        "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, ?, ?, ?)",
+        [id, resolvedPhone, new Date().toISOString(), addedDues > 0 ? "debit" : "credit", Math.abs(addedDues), reason || 'Balance Adjustment']
       );
     }
 
@@ -628,28 +646,41 @@ app.post('/api/adjust-dues', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/record-payment', authenticateToken, async (req, res) => {
-  const { phone, amountPaid, paymentMethod } = req.body;
-  if (!phone || isNaN(amountPaid) || amountPaid <= 0) return res.status(400).json({ error: "Invalid parameters" });
+  const { name, phone, amountPaid, paymentMethod } = req.body;
+  const custName = (name || "").trim();
+  const custPhone = (phone || "").trim();
+  if ((!custName && !custPhone) || isNaN(amountPaid) || amountPaid <= 0) return res.status(400).json({ error: "Invalid parameters" });
 
   try {
     const today = new Date().toISOString().split('T')[0];
-    const phoneStr = String(phone).trim();
+    let cust = null;
+    if (custName) {
+      cust = await dbGet("SELECT * FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)", [custName]);
+    }
+    if (!cust && custPhone) {
+      cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [custPhone]);
+    }
 
-    await dbRun(
-      "UPDATE customers SET balance = balance - ?, \"lastTxn\" = ? WHERE phone = ?",
-      [amountPaid, today, phoneStr]
-    );
+    const resolvedName = cust ? cust.name : (custName || "Customer " + custPhone);
+    const resolvedPhone = cust ? (cust.phone || custPhone) : custPhone;
+
+    if (cust) {
+      await dbRun(
+        "UPDATE customers SET balance = balance - ?, \"lastTxn\" = ? WHERE LOWER(TRIM(name)) = LOWER(?)",
+        [amountPaid, today, resolvedName]
+      );
+    }
 
     const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
     try {
       await dbRun(
-        "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, 'credit', ?, ?)",
-        [id, phoneStr, new Date().toISOString(), amountPaid, paymentMethod || 'Cash']
+        "INSERT INTO customer_ledger (id, phone, customer_name, date, type, amount, ref) VALUES (?, ?, ?, ?, 'credit', ?, ?)",
+        [id, resolvedPhone, resolvedName, new Date().toISOString(), amountPaid, paymentMethod || 'Cash']
       );
     } catch(e) {
       await dbRun(
-        "INSERT INTO ledgerEntries (date, phone, type, amount, ref) VALUES (?, ?, 'credit', ?, ?)",
-        [new Date().toISOString(), phoneStr, amountPaid, paymentMethod || 'Cash']
+        "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, 'credit', ?, ?)",
+        [id, resolvedPhone, new Date().toISOString(), amountPaid, paymentMethod || 'Cash']
       );
     }
 
@@ -680,23 +711,28 @@ app.post('/api/add-transaction', authenticateToken, async (req, res) => {
       }
     }
 
-    if (t.customerPhone && String(t.customerPhone).trim().length >= 10) {
-      const phoneStr = String(t.customerPhone).trim();
-      const nameStr = (t.customerName || "Customer " + phoneStr).trim();
-      const today = new Date().toISOString().split('T')[0];
+    const custName = (t.customerName || "").trim();
+    const custPhone = (t.customerPhone || "").trim();
 
-      let cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [phoneStr]);
+    // Customer identified with Name only. If customerName is provided and not Walk-in Customer:
+    if (custName && custName.toLowerCase() !== "walk-in customer") {
+      const today = new Date().toISOString().split('T')[0];
       const addedBalance = (t.paymentMethod === 'Credit') ? (t.totalPayable || 0) : 0;
+
+      let cust = await dbGet("SELECT * FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)", [custName]);
+      if (!cust && custPhone) {
+        cust = await dbGet("SELECT * FROM customers WHERE phone = ?", [custPhone]);
+      }
 
       if (!cust) {
         await dbRun(
-          "INSERT INTO customers (phone, name, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
-          [phoneStr, nameStr, t.totalPayable || 0, addedBalance, today]
+          "INSERT INTO customers (name, phone, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
+          [custName, custPhone, t.totalPayable || 0, addedBalance, today]
         );
       } else {
         await dbRun(
-          "UPDATE customers SET \"totalPurchased\" = \"totalPurchased\" + ?, balance = balance + ?, \"lastTxn\" = ? WHERE phone = ?",
-          [t.totalPayable || 0, addedBalance, today, phoneStr]
+          "UPDATE customers SET \"totalPurchased\" = \"totalPurchased\" + ?, balance = balance + ?, \"lastTxn\" = ?, phone = CASE WHEN (phone IS NULL OR phone = '') THEN ? ELSE phone END WHERE LOWER(TRIM(name)) = LOWER(?)",
+          [t.totalPayable || 0, addedBalance, today, custPhone, cust.name]
         );
       }
 
@@ -704,10 +740,15 @@ app.post('/api/add-transaction', authenticateToken, async (req, res) => {
         const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
         try {
           await dbRun(
-            "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, 'debit', ?, ?)",
-            [id, phoneStr, t.date || new Date().toISOString(), t.totalPayable || 0, t.id]
+            "INSERT INTO customer_ledger (id, phone, customer_name, date, type, amount, ref) VALUES (?, ?, ?, ?, 'debit', ?, ?)",
+            [id, custPhone, custName, t.date || new Date().toISOString(), t.totalPayable || 0, t.id]
           );
-        } catch(e) {}
+        } catch(e) {
+          await dbRun(
+            "INSERT INTO customer_ledger (id, phone, date, type, amount, ref) VALUES (?, ?, ?, 'debit', ?, ?)",
+            [id, custPhone, t.date || new Date().toISOString(), t.totalPayable || 0, t.id]
+          );
+        }
       }
     }
 

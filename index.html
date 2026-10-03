@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gulati Store POS - Indian Grocery Billing & Product Management</title>
   <meta name="description" content="Premium, Indian GST-enabled POS billing and product inventory management dashboard for grocery stores.">
-  <link rel="stylesheet" href="styles.css?v=80">
+  <link rel="stylesheet" href="styles.css?v=81">
   <link rel="manifest" href="manifest.json">
   
   <!-- Mobile Web App Meta Tags (iOS Support) -->
@@ -183,7 +183,7 @@
       </nav>
       
       <div class="sidebar-footer">
-        <p>Build v80 &bull; GST Active</p>
+        <p>Build v81 &bull; GST Active</p>
         <button class="btn btn-secondary btn-sm" id="sidebar-change-pin-btn" onclick="openChangePinModal()" style="margin-top: 8px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Store Settings</span>
@@ -297,12 +297,20 @@
               <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" id="pos-clear-cart-btn">Clear Cart</button>
             </div>
             
-            <!-- Customer Detail Onboarding (Compact 2-column grid) -->
-            <div class="cart-onboarding" style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-              <input type="text" id="pos-customer-name" placeholder="Customer Name" class="form-control" style="height:34px; font-size:12px;" list="pos-customer-names-list">
-              <datalist id="pos-customer-names-list"></datalist>
-              <input type="tel" id="pos-customer-phone" placeholder="Phone Number" class="form-control" style="height:34px; font-size:12px;" maxlength="10" list="pos-customer-phones-list">
-              <datalist id="pos-customer-phones-list"></datalist>
+            <!-- Customer Detail Onboarding (Compact 2-column grid + Quick Add Customer) -->
+            <div class="cart-onboarding" style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr auto; gap:6px; align-items:center;">
+              <div>
+                <input type="text" id="pos-customer-name" placeholder="Customer Name" class="form-control" style="height:34px; font-size:12px;" list="pos-customer-names-list">
+                <datalist id="pos-customer-names-list"></datalist>
+              </div>
+              <div>
+                <input type="tel" id="pos-customer-phone" placeholder="Mobile (Optional)" class="form-control" style="height:34px; font-size:12px;" maxlength="10" list="pos-customer-phones-list">
+                <datalist id="pos-customer-phones-list"></datalist>
+              </div>
+              <button type="button" class="btn btn-secondary" id="pos-add-customer-btn" title="Add Customer Account" style="height:34px; padding:0 8px; font-size:11px; white-space:nowrap; display:flex; align-items:center; gap:4px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                <span>+ Customer</span>
+              </button>
             </div>
             
             <!-- Active items list (Scrollable middle container - Maximized vertical space) -->
@@ -843,8 +851,8 @@
           <input type="text" id="cust-new-name" class="form-control" required placeholder="e.g. Raman Kumar">
         </div>
         <div class="form-group">
-          <label for="cust-new-phone">Mobile Number (10 digits, Mandatory)</label>
-          <input type="tel" id="cust-new-phone" class="form-control" required maxlength="10" placeholder="e.g. 9999888877">
+          <label for="cust-new-phone">Mobile Number (Optional)</label>
+          <input type="tel" id="cust-new-phone" class="form-control" maxlength="10" placeholder="e.g. 9999888877 (Optional)">
         </div>
         <div class="form-group">
           <label for="cust-new-dues">Previous Outstanding Dues (₹)</label>
@@ -1312,7 +1320,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="initial-data.js?v=80"></script>
-  <script src="app.js?v=80"></script>
+  <script src="initial-data.js?v=81"></script>
+  <script src="app.js?v=81"></script>
 </body>
 </html>
