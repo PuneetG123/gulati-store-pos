@@ -645,32 +645,67 @@ function renderSalesTrendChart() {
 // ----------------------------------------------------
 let posSelectedCategory = "all";
 let posSearchQuery = "";
-
-
+let posVoiceLastQty = 1;
+let posVoiceLastUnit = "pcs";
+let posVoiceLastPrice = null;
 
 function renderPOSCatalog() {
   const catalogGrid = document.getElementById("pos-catalog-grid");
   if (!catalogGrid) return;
   catalogGrid.innerHTML = "";
 
-  // Filter products strictly by query (categories tabs removed from POS)
+  const searchBanner = document.getElementById("pos-search-banner");
+  const cleanSearch = posSearchQuery.trim();
+
+  // Filter products strictly by query (case-insensitive name or SKU match)
   const filteredProducts = state.products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(posSearchQuery.toLowerCase()) || 
-                          p.sku.includes(posSearchQuery);
-    return matchesSearch;
+    if (!cleanSearch) return true;
+    const q = cleanSearch.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
   });
 
-  if (filteredProducts.length === 0) {
-    const cleanSearch = posSearchQuery.trim();
+  // Manage top search results banner
+  if (searchBanner) {
     if (cleanSearch.length > 0) {
-      catalogGrid.innerHTML = `
-        <div style="grid-column: span 4; text-align:center; padding:40px 20px; background:var(--bg-main); border:1px dashed var(--border-color); border-radius:8px;">
-          <p style="color:var(--text-secondary); font-size:14px; margin-bottom:12px;">"${cleanSearch}" not found in inventory catalog.</p>
-          <button class="btn btn-primary" onclick="window.openPosQuickAddModal('${cleanSearch.replace(/'/g, "\\'")}')" style="background:#8B5CF6; border-color:#7C3AED; color:#fff; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer;">
+      searchBanner.style.display = "block";
+      searchBanner.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; gap: 8px;">
+          <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            🔍 Results for "<strong>${cleanSearch}</strong>" (${filteredProducts.length} item${filteredProducts.length === 1 ? '' : 's'})
+          </span>
+          <button type="button" class="btn btn-primary" id="pos-banner-quick-add-btn" style="background:#8B5CF6; border-color:#7C3AED; color:#fff; padding: 5px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;">
             + Add New Product
           </button>
         </div>
       `;
+      const bannerAddBtn = document.getElementById("pos-banner-quick-add-btn");
+      if (bannerAddBtn) {
+        bannerAddBtn.addEventListener("click", () => {
+          window.openPosQuickAddModal(cleanSearch, posVoiceLastUnit, posVoiceLastQty, posVoiceLastPrice);
+        });
+      }
+    } else {
+      searchBanner.style.display = "none";
+      searchBanner.innerHTML = "";
+    }
+  }
+
+  if (filteredProducts.length === 0) {
+    if (cleanSearch.length > 0) {
+      catalogGrid.innerHTML = `
+        <div style="grid-column: span 4; text-align:center; padding:36px 20px; background:var(--bg-main); border:1px dashed var(--border-color); border-radius:8px;">
+          <p style="color:var(--text-secondary); font-size:14px; margin-bottom:12px;">"${cleanSearch}" not found in inventory catalog.</p>
+          <button class="btn btn-primary" id="pos-empty-quick-add-btn" style="background:#8B5CF6; border-color:#7C3AED; color:#fff; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer;">
+            + Add "${cleanSearch}" as New Product
+          </button>
+        </div>
+      `;
+      const emptyAddBtn = document.getElementById("pos-empty-quick-add-btn");
+      if (emptyAddBtn) {
+        emptyAddBtn.addEventListener("click", () => {
+          window.openPosQuickAddModal(cleanSearch, posVoiceLastUnit, posVoiceLastQty, posVoiceLastPrice);
+        });
+      }
     } else {
       catalogGrid.innerHTML = `<div style="grid-column: span 4; text-align:center; color:var(--text-muted); font-size:14px; padding:30px;">No products in catalog.</div>`;
     }
@@ -704,13 +739,34 @@ function renderPOSCatalog() {
       </div>
     `;
 
-    // Click handler to add to cart (Allows billing even if out of stock)
+    // Click handler to add to cart (Uses spoken quantity multiplier if present)
     card.addEventListener("click", () => {
-      addToCart(prod.sku);
+      const addQty = (posVoiceLastQty && posVoiceLastQty > 0) ? posVoiceLastQty : 1;
+      addToCart(prod.sku, addQty);
+      if (addQty > 1) {
+        showVoiceToast(`Added ${addQty} ${prod.unit || ''} ${prod.name} to Cart`);
+        posVoiceLastQty = 1;
+      }
     });
 
     catalogGrid.appendChild(card);
   });
+
+  // When search query is active, also append an "Add New Product" action card into the grid
+  if (cleanSearch.length > 0) {
+    const addCard = document.createElement("div");
+    addCard.className = "product-item-card";
+    addCard.style.cssText = "border: 2px dashed #8B5CF6; background: rgba(139, 92, 246, 0.06); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; cursor: pointer; min-height: 110px; transition: all 0.2s;";
+    addCard.innerHTML = `
+      <div style="font-size: 22px; margin-bottom: 4px;">➕</div>
+      <div style="font-size: 13px; font-weight: 700; color: #8B5CF6;">+ Add New Product</div>
+      <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">"${cleanSearch}"</div>
+    `;
+    addCard.addEventListener("click", () => {
+      window.openPosQuickAddModal(cleanSearch, posVoiceLastUnit, posVoiceLastQty, posVoiceLastPrice);
+    });
+    catalogGrid.appendChild(addCard);
+  }
 }
 
 function suggestHsn(nameVal) {
@@ -799,39 +855,55 @@ function setupPriceQuantitySync(unitSelectId, qtyInputId, rateInputId, totalInpu
   if (totalInput) totalInput.addEventListener('input', onTotalChange);
 }
 
-window.openPosQuickAddModal = function(query) {
+window.openPosQuickAddModal = function(query, unit = null, qty = null, price = null) {
   const quickAddModal = document.getElementById("pos-quick-add-modal");
   if (!quickAddModal) return;
 
-  document.getElementById("quick-add-name").value = query || "";
-  document.getElementById("quick-add-price").value = "";
-  const totalInput = document.getElementById("quick-add-total-price");
-  if (totalInput) totalInput.value = "";
-  
-  const qtyInput = document.getElementById("quick-add-qty");
-  if (qtyInput) qtyInput.value = "1";
+  const resolvedQuery = query || "";
+  const resolvedUnit = unit || posVoiceLastUnit || "pcs";
+  const resolvedQty = (qty && qty > 0) ? qty : (posVoiceLastQty > 0 ? posVoiceLastQty : 1);
+  const resolvedPrice = (price && price > 0) ? price : (posVoiceLastPrice > 0 ? posVoiceLastPrice : null);
 
+  document.getElementById("quick-add-name").value = resolvedQuery;
+  
   const unitSelect = document.getElementById("quick-add-unit");
-  if (unitSelect) unitSelect.value = "pcs";
+  if (unitSelect) unitSelect.value = resolvedUnit;
+
+  const qtyInput = document.getElementById("quick-add-qty");
+  if (qtyInput) qtyInput.value = resolvedQty;
+
+  const priceInput = document.getElementById("quick-add-price");
+  const totalInput = document.getElementById("quick-add-total-price");
+  
+  if (resolvedPrice && resolvedPrice > 0) {
+    if (priceInput) priceInput.value = resolvedPrice;
+    if (totalInput) totalInput.value = (resolvedPrice * resolvedQty).toFixed(2);
+  } else {
+    if (priceInput) priceInput.value = "";
+    if (totalInput) totalInput.value = "";
+  }
 
   // Auto-suggest GST slab based on product name
-  const suggestedGst = suggestHsn(query) === "2501" || (suggestHsn(query) === "1905" && !query.toLowerCase().includes("biscuit")) ? "0" : 
-                        ["0902", "0910", "1101", "1006", "1701"].includes(suggestHsn(query)) ? "5" :
-                        ["0405", "2106", "2001"].includes(suggestHsn(query)) ? "12" : "18";
+  const suggestedGst = suggestHsn(resolvedQuery) === "2501" || (suggestHsn(resolvedQuery) === "1905" && !resolvedQuery.toLowerCase().includes("biscuit")) ? "0" : 
+                        ["0902", "0910", "1101", "1006", "1701"].includes(suggestHsn(resolvedQuery)) ? "5" :
+                        ["0405", "2106", "2001"].includes(suggestHsn(resolvedQuery)) ? "12" : "18";
   
   document.getElementById("quick-add-gst").value = suggestedGst;
 
   const rateLabel = document.getElementById("quick-add-rate-label");
   const totalLabel = document.getElementById("quick-add-total-label");
-  if (rateLabel) rateLabel.innerText = "Rate (₹/pcs) *";
-  if (totalLabel) totalLabel.innerText = "Total for 1 pcs (₹)";
+  if (rateLabel) rateLabel.innerText = `Rate (₹/${resolvedUnit}) *`;
+  if (totalLabel) totalLabel.innerText = `Total for ${resolvedQty} ${resolvedUnit} (₹)`;
 
   quickAddModal.classList.add("active");
   
   setTimeout(() => {
-    if (qtyInput) {
+    if (!resolvedPrice && resolvedQty === 1 && qtyInput) {
       qtyInput.focus();
       qtyInput.select();
+    } else if (priceInput) {
+      priceInput.focus();
+      if (priceInput.value) priceInput.select();
     }
   }, 100);
 };
@@ -841,6 +913,11 @@ function setupPOSCartActions() {
   const searchInput = document.getElementById("pos-search-input");
   searchInput.addEventListener("input", (e) => {
     posSearchQuery = e.target.value;
+    if (!posSearchQuery.trim()) {
+      posVoiceLastQty = 1;
+      posVoiceLastUnit = "pcs";
+      posVoiceLastPrice = null;
+    }
     renderPOSCatalog();
   });
 
@@ -981,6 +1058,9 @@ function setupPOSCartActions() {
     // Clear search query & input
     document.getElementById("pos-search-input").value = "";
     posSearchQuery = "";
+    posVoiceLastQty = 1;
+    posVoiceLastUnit = "pcs";
+    posVoiceLastPrice = null;
     
     // Re-enable buttons
     if (submitBtn) {
@@ -4768,16 +4848,31 @@ async function processVoiceBillingCommand(rawText, mode = 'billing') {
   // MODE 1: POS BILLING PAGE
   // =======================================================
   if (mode === 'billing') {
-    if (existingProduct) {
-      // Product exists! Directly add to cart with spoken quantity without popup
-      addToCart(existingProduct.sku, quantity);
-      renderAll();
-      showVoiceToast(`Added ${quantity > 1 ? quantity + ' ' + (existingProduct.unit || '') + ' ' : ''}${existingProduct.name} to Cart (₹${existingProduct.sellingPrice})`);
-      return;
+    // Save last spoken parameters for quick-add and card-click
+    posVoiceLastQty = (quantity && quantity > 0) ? quantity : 1;
+    posVoiceLastUnit = unit || 'pcs';
+    posVoiceLastPrice = price || null;
+
+    // Put spoken item name into POS search input and trigger catalog search
+    const searchInput = document.getElementById("pos-search-input");
+    if (searchInput) {
+      searchInput.value = itemName;
+      posSearchQuery = itemName;
     }
 
-    // Product DOES NOT exist in inventory! Prompt for price popup with Item Name, Unit, and Quantity
-    openVoicePriceModal(itemName, unit, quantity, price, true);
+    renderPOSCatalog();
+
+    const cleanSearch = itemName.trim().toLowerCase();
+    const matchingCount = state.products.filter(p => 
+      p.name.toLowerCase().includes(cleanSearch) || 
+      p.sku.toLowerCase().includes(cleanSearch)
+    ).length;
+
+    if (matchingCount > 0) {
+      showVoiceToast(`Found ${matchingCount} item${matchingCount > 1 ? 's' : ''} matching "${itemName}". Tap to add or click + Add New.`);
+    } else {
+      showVoiceToast(`"${itemName}" not found in catalog. Tap + Add "${itemName}" as New Product.`);
+    }
     return;
   }
 
