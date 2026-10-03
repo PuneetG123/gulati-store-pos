@@ -1888,3 +1888,107 @@ tr:hover td {
     opacity: 1;
   }
 }
+
+/* POS Customer Autocomplete Dropdown */
+.pos-customer-name-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.pos-customer-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 260px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: none;
+}
+
+.pos-cust-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color, #f1f5f9);
+  transition: background-color 0.15s ease;
+}
+
+.pos-cust-item:last-child {
+  border-bottom: none;
+}
+
+.pos-cust-item:hover,
+.pos-cust-item.active {
+  background: var(--bg-card-hover, rgba(0, 0, 0, 0.05));
+}
+
+.pos-cust-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.pos-cust-name-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pos-cust-due-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.pos-cust-due-badge.due {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.12);
+}
+
+.pos-cust-due-badge.advance {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.12);
+}
+
+.pos-cust-phone-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.pos-cust-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.pos-cust-add-quick {
+  margin-top: 8px;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.pos-cust-add-quick:hover {
+  background: rgba(14, 165, 233, 0.15);
+}
+
+.input-error-shake {
+  animation: shake 0.4s ease;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+}

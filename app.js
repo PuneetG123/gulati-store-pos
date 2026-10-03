@@ -242,7 +242,21 @@ async function initData(isStartup = false) {
     // Bind to application state
     state.products = loadedState.products || [];
     state.transactions = loadedState.transactions || [];
-    state.customers = loadedState.customers || [];
+    // Case-insensitive deduplication of customers (preserving canonical name & merging balances)
+    const uniqueCustMap = new Map();
+    (loadedState.customers || []).forEach(c => {
+      if (!c || !c.name) return;
+      const key = c.name.trim().toLowerCase();
+      if (!uniqueCustMap.has(key)) {
+        uniqueCustMap.set(key, { ...c, name: c.name.trim() });
+      } else {
+        const existing = uniqueCustMap.get(key);
+        if (!existing.phone && c.phone) existing.phone = c.phone;
+        existing.totalPurchased = (existing.totalPurchased || 0) + (c.totalPurchased || 0);
+        existing.balance = (existing.balance || 0) + (c.balance || 0);
+      }
+    });
+    state.customers = Array.from(uniqueCustMap.values());
     state.ledgerEntries = (loadedState.ledgerEntries || []).map(entry => {
       if (!entry.customerName && entry.phone) {
         const found = state.customers.find(c => c.phone === entry.phone);
@@ -914,6 +928,16 @@ window.openPosQuickAddModal = function(query, unit = null, qty = null, price = n
   }, 100);
 };
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function setupPOSCartActions() {
   // Search input change
   const searchInput = document.getElementById("pos-search-input");
@@ -927,15 +951,106 @@ function setupPOSCartActions() {
     renderPOSCatalog();
   });
 
-  // Client Datalist autofill hooks
+  // Customer Dropdown & Autofill hooks
   const phoneInput = document.getElementById("pos-customer-phone");
   const nameInput = document.getElementById("pos-customer-name");
+  const customerDropdown = document.getElementById("pos-customer-dropdown");
+  const payMethodSelect = document.getElementById("pos-payment-method");
+  const posAddCustBtn = document.getElementById("pos-add-customer-btn");
+
+  const selectCustomerInPOS = (custName, custPhone) => {
+    if (!nameInput) return;
+    nameInput.value = custName;
+    nameInput.style.borderColor = "var(--primary)";
+    nameInput.classList.remove("input-error-shake");
+    if (phoneInput) {
+      phoneInput.value = custPhone || "";
+      if (custPhone) phoneInput.style.borderColor = "var(--primary)";
+    }
+    if (customerDropdown) customerDropdown.style.display = "none";
+    setTimeout(() => {
+      if (nameInput) nameInput.style.borderColor = "var(--border-color)";
+      if (phoneInput) phoneInput.style.borderColor = "var(--border-color)";
+    }, 800);
+  };
+
+  const renderPOSCustomerDropdown = (query = "") => {
+    if (!customerDropdown || !nameInput) return;
+    const cleanQ = (query || "").trim().toLowerCase();
+
+    // Deduplicate state.customers case-insensitively
+    const seen = new Set();
+    const uniqueCusts = [];
+    (state.customers || []).forEach(c => {
+      if (!c || !c.name) return;
+      const key = c.name.trim().toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueCusts.push(c);
+      }
+    });
+
+    const matches = uniqueCusts.filter(c => {
+      if (!cleanQ) return true;
+      return c.name.toLowerCase().includes(cleanQ) || (c.phone && c.phone.includes(cleanQ));
+    });
+
+    if (matches.length === 0) {
+      if (cleanQ) {
+        customerDropdown.innerHTML = `
+          <div class="pos-cust-empty">
+            <div>No customer found with "${escapeHtml(cleanQ)}"</div>
+            <div class="pos-cust-add-quick" id="pos-dropdown-quick-add-btn">+ Add "${escapeHtml(nameInput.value.trim())}" as New Customer</div>
+          </div>
+        `;
+        customerDropdown.style.display = "block";
+        const quickAddBtn = document.getElementById("pos-dropdown-quick-add-btn");
+        if (quickAddBtn && posAddCustBtn) {
+          quickAddBtn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            customerDropdown.style.display = "none";
+            posAddCustBtn.click();
+          });
+        }
+      } else {
+        customerDropdown.style.display = "none";
+      }
+      return;
+    }
+
+    customerDropdown.innerHTML = matches.slice(0, 15).map((c, idx) => {
+      let badge = "";
+      if (c.balance > 0) {
+        badge = `<span class="pos-cust-due-badge due">Due: ₹${c.balance.toFixed(2)}</span>`;
+      } else if (c.balance < 0) {
+        badge = `<span class="pos-cust-due-badge advance">Adv: ₹${Math.abs(c.balance).toFixed(2)}</span>`;
+      }
+      return `
+        <div class="pos-cust-item ${idx === 0 && cleanQ ? 'active' : ''}" data-name="${escapeHtml(c.name)}" data-phone="${escapeHtml(c.phone || '')}">
+          <div class="pos-cust-item-main">
+            <span class="pos-cust-name-text">${escapeHtml(c.name)}</span>
+            ${badge}
+          </div>
+          ${c.phone ? `<div class="pos-cust-phone-text">${escapeHtml(c.phone)}</div>` : ''}
+        </div>
+      `;
+    }).join("");
+
+    customerDropdown.style.display = "block";
+
+    customerDropdown.querySelectorAll(".pos-cust-item").forEach(item => {
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        selectCustomerInPOS(item.getAttribute("data-name"), item.getAttribute("data-phone"));
+      });
+    });
+  };
 
   const autofillByName = (nameVal) => {
     const cleanName = (nameVal || "").trim().toLowerCase();
     if (!cleanName) return;
-    const existing = state.customers.find(c => c.name.toLowerCase() === cleanName);
-    if (existing && existing.phone) {
+    const existing = state.customers.find(c => c.name.trim().toLowerCase() === cleanName);
+    if (existing && existing.phone && phoneInput) {
       phoneInput.value = existing.phone;
       phoneInput.style.borderColor = "var(--primary)";
       nameInput.style.borderColor = "var(--primary)";
@@ -946,35 +1061,107 @@ function setupPOSCartActions() {
     }
   };
 
-  nameInput.addEventListener("input", (e) => autofillByName(e.target.value));
-  nameInput.addEventListener("change", (e) => autofillByName(e.target.value));
+  if (nameInput) {
+    nameInput.addEventListener("input", (e) => {
+      renderPOSCustomerDropdown(e.target.value);
+      autofillByName(e.target.value);
+    });
 
-  phoneInput.addEventListener("input", (e) => {
-    const phone = e.target.value.trim();
-    if (phone.length === 10) {
-      const existing = state.customers.find(c => c.phone && c.phone === phone);
-      if (existing) {
-        nameInput.value = existing.name;
-        // visual success glow
-        phoneInput.style.borderColor = "var(--primary)";
-        nameInput.style.borderColor = "var(--primary)";
-        setTimeout(() => {
-          phoneInput.style.borderColor = "var(--border-color)";
-          nameInput.style.borderColor = "var(--border-color)";
-        }, 1000);
+    nameInput.addEventListener("focus", (e) => {
+      renderPOSCustomerDropdown(e.target.value);
+    });
+
+    nameInput.addEventListener("keydown", (e) => {
+      if (!customerDropdown || customerDropdown.style.display === "none") return;
+      const items = Array.from(customerDropdown.querySelectorAll(".pos-cust-item"));
+      if (!items.length) return;
+      let activeIndex = items.findIndex(el => el.classList.contains("active"));
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (activeIndex >= 0) items[activeIndex].classList.remove("active");
+        activeIndex = (activeIndex + 1) % items.length;
+        items[activeIndex].classList.add("active");
+        items[activeIndex].scrollIntoView({ block: "nearest" });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (activeIndex >= 0) items[activeIndex].classList.remove("active");
+        activeIndex = (activeIndex - 1 + items.length) % items.length;
+        items[activeIndex].classList.add("active");
+        items[activeIndex].scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        if (activeIndex >= 0) {
+          e.preventDefault();
+          const item = items[activeIndex];
+          selectCustomerInPOS(item.getAttribute("data-name"), item.getAttribute("data-phone"));
+        }
+      } else if (e.key === "Escape") {
+        customerDropdown.style.display = "none";
       }
+    });
+
+    nameInput.addEventListener("blur", () => {
+      setTimeout(() => {
+        if (customerDropdown) customerDropdown.style.display = "none";
+      }, 200);
+    });
+  }
+
+  // Dismiss dropdown on click outside
+  document.addEventListener("click", (e) => {
+    const wrapper = document.querySelector(".pos-customer-name-wrapper");
+    if (wrapper && !wrapper.contains(e.target)) {
+      if (customerDropdown) customerDropdown.style.display = "none";
     }
   });
 
+  // Mobile number input listener for reverse autofill
+  if (phoneInput) {
+    phoneInput.addEventListener("input", (e) => {
+      const phone = e.target.value.trim();
+      if (phone.length === 10) {
+        const existing = state.customers.find(c => c.phone && c.phone === phone);
+        if (existing && nameInput) {
+          nameInput.value = existing.name;
+          phoneInput.style.borderColor = "var(--primary)";
+          nameInput.style.borderColor = "var(--primary)";
+          setTimeout(() => {
+            phoneInput.style.borderColor = "var(--border-color)";
+            nameInput.style.borderColor = "var(--border-color)";
+          }, 1000);
+        }
+      }
+    });
+  }
+
+  // Update Customer Name placeholder & requirement dynamically based on Payment Method
+  const updatePayMethodRequirement = () => {
+    if (!payMethodSelect || !nameInput) return;
+    const isKhata = payMethodSelect.value === 'Credit';
+    if (isKhata) {
+      nameInput.placeholder = "Customer Name * (Required for Khata)";
+      if (!nameInput.value.trim()) {
+        nameInput.style.borderColor = "var(--primary)";
+      }
+    } else {
+      nameInput.placeholder = "Customer Name (Optional)";
+      nameInput.style.borderColor = "var(--border-color)";
+    }
+  };
+
+  if (payMethodSelect) {
+    payMethodSelect.addEventListener("change", updatePayMethodRequirement);
+    updatePayMethodRequirement();
+  }
+
   // Direct "+ Customer" button on POS billing page
-  const posAddCustBtn = document.getElementById("pos-add-customer-btn");
   if (posAddCustBtn) {
     posAddCustBtn.addEventListener("click", () => {
       const addModal = document.getElementById("add-customer-modal");
       const form = document.getElementById("add-customer-form");
       if (form) form.reset();
-      const currentName = nameInput.value.trim();
-      const currentPhone = phoneInput.value.trim();
+      const currentName = nameInput ? nameInput.value.trim() : "";
+      const currentPhone = phoneInput ? phoneInput.value.trim() : "";
       if (currentName) document.getElementById("cust-new-name").value = currentName;
       if (currentPhone) document.getElementById("cust-new-phone").value = currentPhone;
       if (addModal) addModal.classList.add("active");
@@ -1410,18 +1597,26 @@ async function checkoutCart() {
   const customerName = nameInput.value.trim();
   const customerPhone = phoneInput.value.trim();
 
-  // Validate customer for credit or validate phone format if phone is provided
+  // Customer Name is ONLY required when payment method is Khata Ledger (Credit)
   if (payMethod === 'Credit') {
     if (!customerName) {
-      alert("Customer Name is required for Credit / Khata transactions.");
+      alert("Customer Name is required when payment method is Khata Ledger. Please specify the customer name.");
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.classList.add("input-error-shake");
+        setTimeout(() => nameInput.classList.remove("input-error-shake"), 600);
+      }
       return;
     }
     if (customerPhone && !/^\d{10}$/.test(customerPhone)) {
       alert("If entered, mobile number must be 10 digits.");
+      if (phoneInput) phoneInput.focus();
       return;
     }
   } else if (customerPhone && !/^\d{10}$/.test(customerPhone)) {
+    // For Cash & other direct payments: Customer Name is NOT required, no alert given
     alert("If entered, mobile number must be 10 digits.");
+    if (phoneInput) phoneInput.focus();
     return;
   }
 
@@ -1520,7 +1715,7 @@ async function checkoutCart() {
   if (customerName && customerName.toLowerCase() !== "walk-in customer") {
     const nameStr = customerName.trim();
     const phoneStr = customerPhone ? String(customerPhone).trim() : "";
-    let cust = state.customers.find(c => c.name.toLowerCase() === nameStr.toLowerCase());
+    let cust = state.customers.find(c => c.name.trim().toLowerCase() === nameStr.toLowerCase());
     if (!cust && phoneStr) {
       cust = state.customers.find(c => c.phone && c.phone === phoneStr);
     }
@@ -1543,6 +1738,8 @@ async function checkoutCart() {
       }
       cust.lastTxn = new Date().toISOString().split('T')[0];
     }
+    // Maintain canonical casing on transaction object
+    transaction.customerName = cust.name;
     saveCustomersToStorage();
 
     if (payMethod === 'Credit') {
@@ -3013,7 +3210,8 @@ function setupCustomerLedgerActions() {
       }
 
       // Check duplication by Name (case-insensitive)
-      const existing = state.customers.find(c => c.name.toLowerCase() === name.toLowerCase());
+      const cleanName = name.trim();
+      const existing = state.customers.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
       if (existing) {
         alert(`A customer account with name "${existing.name}" already exists.`);
         return;
@@ -3021,8 +3219,8 @@ function setupCustomerLedgerActions() {
 
       // Create new customer
       const newCust = {
-        name: name,
-        phone: phone || "",
+        name: cleanName,
+        phone: phone ? phone.trim() : "",
         totalPurchased: dues > 0 ? dues : 0,
         balance: dues,
         lastTxn: dues !== 0 ? new Date().toISOString().split('T')[0] : ""

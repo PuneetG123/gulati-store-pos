@@ -208,6 +208,7 @@ function createSqliteTables() {
       balance REAL,
       lastTxn TEXT
     )`);
+    sqliteDb.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_sqlite_cust_name ON customers (LOWER(TRIM(name)))");
 
     sqliteDb.run(`CREATE TABLE IF NOT EXISTS customer_ledger (
       id TEXT PRIMARY KEY,
@@ -488,8 +489,12 @@ app.post('/api/save', authenticateToken, async (req, res) => {
     // 3. Sync Customers
     if (Array.isArray(customers) && customers.length > 0) {
       await runQuery("DELETE FROM customers");
+      const seenCusts = new Set();
       for (const c of customers) {
         if (!c.name) continue;
+        const key = c.name.trim().toLowerCase();
+        if (seenCusts.has(key)) continue;
+        seenCusts.add(key);
         await runQuery(
           "INSERT INTO customers (name, phone, \"totalPurchased\", balance, \"lastTxn\") VALUES (?, ?, ?, ?, ?)",
           [c.name.trim(), c.phone ? String(c.phone).trim() : '', c.totalPurchased || c.totalPurchases || 0, c.balance || 0, c.lastTxn || '']
@@ -738,10 +743,11 @@ app.post('/api/add-transaction', authenticateToken, async (req, res) => {
 
       if (t.paymentMethod === 'Credit') {
         const id = `led_${Date.now()}_${Math.random().toString(36).substr(2,4)}`;
+        const canonicalName = cust ? cust.name : custName;
         try {
           await dbRun(
             "INSERT INTO customer_ledger (id, phone, customer_name, date, type, amount, ref) VALUES (?, ?, ?, ?, 'debit', ?, ?)",
-            [id, custPhone, custName, t.date || new Date().toISOString(), t.totalPayable || 0, t.id]
+            [id, custPhone, canonicalName, t.date || new Date().toISOString(), t.totalPayable || 0, t.id]
           );
         } catch(e) {
           await dbRun(
